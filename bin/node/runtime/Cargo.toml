@@ -112,6 +112,11 @@ pallet-vesting = { version = "4.0.0-dev", default-features = false, path = "../.
 pallet-whitelist = { version = "4.0.0-dev", default-features = false, path = "../../../frame/whitelist" }
 
 
+# Custom Pallet
+pallet-nfts = { version = "0.0.1", default-features = false, path = "../../../frame/nfts" }
+
+
+
 
 
 # Frontier
@@ -224,7 +229,8 @@ std = [
 	"sp-io/std",
 	"pallet-child-bounties/std",
 	"pallet-alliance/std",
-
+	 # cuntom 
+	 "pallet-nfts/std",
      #frontier
 	'fp-rpc/std',
     'fp-self-contained/std',

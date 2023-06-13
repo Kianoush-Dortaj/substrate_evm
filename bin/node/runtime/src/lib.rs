@@ -35,9 +35,9 @@ use frame_support::{
 	parameter_types,
 	traits::{
 		fungible::ItemOf, AsEnsureOriginWithArg, ConstBool, ConstU128, ConstU16, ConstU32,
-		Currency, EitherOfDiverse, EqualPrivilegeOnly, Everything, Imbalance, InstanceFilter,
-		KeyOwnerProofSystem, LockIdentifier, Nothing, OnUnbalanced, U128CurrencyToVote,
-		WithdrawReasons,FindAuthor,
+		Currency, EitherOfDiverse, EqualPrivilegeOnly, Everything, FindAuthor, Imbalance,
+		InstanceFilter, KeyOwnerProofSystem, LockIdentifier, Nothing, OnUnbalanced,
+		U128CurrencyToVote, WithdrawReasons,
 	},
 	weights::{
 		constants::{
@@ -45,19 +45,19 @@ use frame_support::{
 		},
 		ConstantMultiplier, IdentityFee, Weight,
 	},
-	ConsensusEngineId,PalletId, RuntimeDebug,
+	ConsensusEngineId, PalletId, RuntimeDebug,
 };
-use pallet_evm::FeeCalculator;
 use pallet_evm::{
-	Account as EVMAccount, EnsureAddressTruncated,GasWeightMapping, HashedAddressMapping, Runner,
+	Account as EVMAccount, EnsureAddressTruncated, FeeCalculator, GasWeightMapping,
+	HashedAddressMapping, Runner,
 };
 // use crate::sp_api_hidden_includes_construct_runtime::hidden_include::dispatch::Dispatchable;
 use pallet_ethereum::{Call::transact, Transaction as EthereumTransaction};
 mod precompiles;
 use precompiles::FrontierPrecompiles;
 
-
-
+use crate::sp_api_hidden_includes_construct_runtime::hidden_include::dispatch::Dispatchable;
+use fp_rpc::TransactionStatus;
 use frame_system::{
 	limits::{BlockLength, BlockWeights},
 	EnsureRoot, EnsureRootWithSuccess, EnsureSigned, EnsureWithSuccess,
@@ -75,22 +75,23 @@ pub use pallet_transaction_payment::{CurrencyAdapter, Multiplier, TargetedFeeAdj
 use pallet_transaction_payment::{FeeDetails, RuntimeDispatchInfo};
 use sp_api::impl_runtime_apis;
 use sp_authority_discovery::AuthorityId as AuthorityDiscoveryId;
-use sp_core::{crypto::KeyTypeId, OpaqueMetadata,H160, H256, U256};
+use sp_core::{crypto::KeyTypeId, OpaqueMetadata, H160, H256, U256};
 use sp_inherents::{CheckInherentsResult, InherentData};
 use sp_runtime::{
 	create_runtime_str,
 	curve::PiecewiseLinear,
 	generic, impl_opaque_keys,
 	traits::{
-		self, AccountIdLookup,BlakeTwo256, Block as BlockT,DispatchInfoOf, Bounded, Convert,ConvertInto, NumberFor, OpaqueKeys,
-		SaturatedConversion, StaticLookup,PostDispatchInfoOf,
+		self, AccountIdLookup, BlakeTwo256, Block as BlockT, Bounded, Convert, ConvertInto,
+		DispatchInfoOf, NumberFor, OpaqueKeys, PostDispatchInfoOf, SaturatedConversion,
+		StaticLookup,
 	},
-	transaction_validity::{TransactionPriority, TransactionSource, TransactionValidity,TransactionValidityError},
+	transaction_validity::{
+		TransactionPriority, TransactionSource, TransactionValidity, TransactionValidityError,
+	},
 	ApplyExtrinsicResult, FixedPointNumber, FixedU128, Perbill, Percent, Permill, Perquintill,
 };
-use crate::sp_api_hidden_includes_construct_runtime::hidden_include::dispatch::Dispatchable;
 use sp_std::{marker::PhantomData, prelude::*};
-use fp_rpc::TransactionStatus;
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -182,7 +183,6 @@ impl OnUnbalanced<NegativeImbalance> for DealWithFees {
 		}
 	}
 
-
 	fn on_nonzero_unbalanced(amount: NegativeImbalance) {
 		// for fees, 80% to treasury, 20% to author
 		let split = amount.ration(80, 20);
@@ -191,7 +191,7 @@ impl OnUnbalanced<NegativeImbalance> for DealWithFees {
 	}
 }
 
-	/// We assume that ~10% of the block weight is consumed by `on_initialize` handlers.
+/// We assume that ~10% of the block weight is consumed by `on_initialize` handlers.
 /// This is used to limit the maximal weight of a single extrinsic.
 const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(10);
 /// We allow `Normal` extrinsics to fill up the block up to 75%, the rest can be used
@@ -202,12 +202,12 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 // 	Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
 const MAXIMUM_BLOCK_WEIGHT: Weight =
 	Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(1), u64::MAX);
-	// const WEIGHT_PER_GAS: u64 = 20_000;
+// const WEIGHT_PER_GAS: u64 = 20_000;
 /// Current approximation of the gas/s consumption considering
 /// EVM execution over compiled WASM (on 4.4Ghz CPU).
 /// Given the 500ms Weight, from which 75% only are used for transactions,
 /// the total EVM execution gas limit is: GAS_PER_SECOND * 0.500 * 0.75 ~= 15_000_000.
-	pub const GAS_PER_SECOND: u64 = 40_000_000;
+pub const GAS_PER_SECOND: u64 = 40_000_000;
 /// Approximate ratio of the amount of Weight per Gas.
 /// u64 works for approximations because Weight is a very small unit compared to gas.
 pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND / GAS_PER_SECOND;
@@ -282,7 +282,9 @@ impl<F: FindAuthor<u32>> FindAuthor<H160> for FindAuthorTruncated<F> {
 	{
 		if let Some(author_index) = F::find_author(digests) {
 			let authority_id = Babe::authorities()[author_index as usize].clone().0;
-			return Some(H160::from_slice(&sp_core::crypto::ByteArray::to_raw_vec(&authority_id)[4..24]));
+			return Some(H160::from_slice(
+				&sp_core::crypto::ByteArray::to_raw_vec(&authority_id)[4..24],
+			))
 		}
 		None
 	}
@@ -560,7 +562,6 @@ impl OnUnbalanced<NegativeImbalance> for Author {
 	}
 }
 
-
 parameter_types! {
 	pub const ExistentialDeposit: Balance = 1 * ED;
 	// For weight estimation, we assume that the most locks on an individual account will be 50.
@@ -655,7 +656,6 @@ pub mod opaque {
 	pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 	/// Opaque block identifier type.
 	pub type BlockId = generic::BlockId<Block>;
-	
 }
 
 impl pallet_session::Config for Runtime {
@@ -1334,8 +1334,8 @@ impl pallet_tips::Config for Runtime {
 parameter_types! {
 	// pub const DepositPerItem: Balance = deposit(1, 0);
 	// pub const DepositPerByte: Balance = deposit(0, 1);
-	
-	
+
+
 	pub const DepositPerItem: Balance = CENTS/1_000;
 	pub const DepositPerByte: Balance = CENTS/1_000_0;
 	pub const MaxValueSize: u32 = 16 * 1024;
@@ -1421,7 +1421,8 @@ where
 			frame_system::CheckEra::<Runtime>::from(era),
 			frame_system::CheckNonce::<Runtime>::from(nonce),
 			frame_system::CheckWeight::<Runtime>::new(),
-			pallet_asset_tx_payment::ChargeAssetTxPayment::<Runtime>::from(tip, Some(9)),		);
+			pallet_asset_tx_payment::ChargeAssetTxPayment::<Runtime>::from(tip, Some(9)),
+		);
 		let raw_payload = SignedPayload::new(call, extra)
 			.map_err(|e| {
 				log::warn!("Unable to create signed payload: {:?}", e);
@@ -1685,6 +1686,11 @@ impl pallet_nis::Config for Runtime {
 	type ThawThrottle = ThawThrottle;
 }
 
+impl pallet_nfts::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = pallet_nfts::weights::SubstrateWeight<Runtime>;
+}
+
 parameter_types! {
 	pub const CollectionDeposit: Balance = 100 * DOLLARS;
 	pub const ItemDeposit: Balance = 1 * DOLLARS;
@@ -1884,8 +1890,9 @@ construct_runtime!(
 		FastUnstake: pallet_fast_unstake,
 		MessageQueue: pallet_message_queue,
 
-        //EVM
+		//EVM
 		EVM: pallet_evm,
+		NFT:pallet_nfts,
 		Ethereum: pallet_ethereum,
 		DynamicFee: pallet_dynamic_fee,
 		BaseFee: pallet_base_fee,
@@ -1917,10 +1924,6 @@ impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConve
 	}
 }
 
-
-
-
-
 /// The address format for describing accounts.
 pub type Address = sp_runtime::MultiAddress<AccountId, AccountIndex>;
 /// Block header type as expected by this runtime.
@@ -1948,14 +1951,16 @@ pub type SignedExtra = (
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
-pub type UncheckedExtrinsic1 = generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
+pub type UncheckedExtrinsic1 =
+	generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 pub type UncheckedExtrinsic =
 	fp_self_contained::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 /// The payload being signed in transactions.
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, SignedExtra>;
 /// Extrinsic type that has already been checked.
 pub type CheckedExtrinsic1 = generic::CheckedExtrinsic<AccountId, RuntimeCall, SignedExtra>;
-pub type CheckedExtrinsic = fp_self_contained::CheckedExtrinsic<AccountId, RuntimeCall, SignedExtra, H160>;
+pub type CheckedExtrinsic =
+	fp_self_contained::CheckedExtrinsic<AccountId, RuntimeCall, SignedExtra, H160>;
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
 	Runtime,
@@ -1973,8 +1978,6 @@ type Migrations = (
 	pallet_alliance::migration::Migration<Runtime>,
 	pallet_contracts::Migration<Runtime>,
 );
-
-
 
 impl fp_self_contained::SelfContainedCall for RuntimeCall {
 	type SignedInfo = H160;
@@ -2008,7 +2011,8 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
 		len: usize,
 	) -> Option<Result<(), TransactionValidityError>> {
 		match self {
-			RuntimeCall::Ethereum(call) => call.pre_dispatch_self_contained(info, dispatch_info, len),
+			RuntimeCall::Ethereum(call) =>
+				call.pre_dispatch_self_contained(info, dispatch_info, len),
 			_ => None,
 		}
 	}
@@ -2023,11 +2027,10 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
 		// 	_ => None,
 		// }
 		match self {
-			call @ RuntimeCall::Ethereum(pallet_ethereum::Call::transact { .. }) => {
+			call @ RuntimeCall::Ethereum(pallet_ethereum::Call::transact { .. }) =>
 				Some(call.dispatch(RuntimeOrigin::from(
 					pallet_ethereum::RawOrigin::EthereumTransaction(info),
-				)))
-			}
+				))),
 			_ => None,
 		}
 	}

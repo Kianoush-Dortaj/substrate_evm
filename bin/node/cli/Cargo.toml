@@ -1,12 +1,12 @@
 [package]
 name = "node-cli"
 version = "3.0.0-dev"
-authors = ["peer"]
+authors = ["hearvers"]
 build = "build.rs"
 description = "Generic Substrate node implementation in Rust."
 edition = "2021"
 license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
-default-run = "peer"
+default-run = "hearvers"
 homepage = "https://substrate.io"
 repository = "https://github.com/paritytech/substrate/"
 publish = false
@@ -26,7 +26,7 @@ is-it-maintained-issue-resolution = { repository = "paritytech/substrate" }
 is-it-maintained-open-issues = { repository = "paritytech/substrate" }
 
 [[bin]]
-name = "peer"
+name = "hearvers"
 path = "bin/main.rs"
 required-features = ["cli"]
 

@@ -1,7 +1,7 @@
 [package]
 name = "sc-cli"
 version = "0.10.0-dev"
-authors = ["Parity Technologies <admin@parity.io>"]
+authors = ["Kianoush Dortaj"]
 description = "Substrate CLI interface."
 edition = "2021"
 license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
