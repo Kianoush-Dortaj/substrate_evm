@@ -3,6 +3,22 @@
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/reference/frame-pallets/>
+use codec::{alloc::vec, Decode, Encode, HasCompact, MaxEncodedLen};
+
+use frame_support::sp_runtime::{
+	traits::{AtLeast32BitUnsigned, CheckedAdd, Member, One},
+	DispatchError,
+};
+
+
+use frame_support::{
+	inherent::Vec,
+	pallet_prelude::{ValueQuery, *},
+	traits::{Currency, ExistenceRequirement, Get, ReservableCurrency},
+	Twox64Concat,
+};
+use frame_system::Config as SystemConfig;
+
 pub use pallet::*;
 
 #[cfg(test)]
@@ -11,16 +27,75 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
-#[cfg(feature = "runtime-benchmarks")]
-mod benchmarking;
 pub mod weights;
 pub use weights::*;
 
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
-	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
+
+	pub type BalanceOf<T> =
+		<<T as Config>::Currency as Currency<<T as SystemConfig>::AccountId>>::Balance;
+
+	pub type CollectionDetailsOf<T> =
+		Collection<<T as SystemConfig>::AccountId, <T as Config>::CollectionId>;
+
+	pub type NFTDetailsOf<T> =
+		NFT<<T as SystemConfig>::AccountId, BalanceOf<T>>;
+
+	// A value placed in storage that represents the current version of the Scheduler storage.
+	// This value is used by the `on_runtime_upgrade` logic to determine whether we run
+	// storage migration logic.
+	#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+	pub enum Releases {
+		V0,
+		V1,
+		V2,
+	}
+
+	impl Default for Releases {
+		fn default() -> Self {
+			Releases::V0
+		}
+	}
+
+	/// Class info
+	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+	#[scale_info(skip_type_params(AccountId, T))]
+	pub struct Collection<AccountId, CollectionId> {
+		pub collection_id: CollectionId,
+		/// Class metadata
+		pub metadata: BoundedVec<u8, ConstU32<32>>,
+		/// Class owner
+		pub issuer: AccountId,
+	}
+
+	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+	#[scale_info(skip_type_params(AccountId))]
+	pub struct ShareProfitsInfo<AccountId> {
+		/// Token metadata
+		pub percentage: BoundedVec<u8, ConstU32<32>>,
+		/// Token owner
+		pub owners: AccountId,
+	}
+
+	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+	#[scale_info(skip_type_params(AccountId, Balance))]
+	pub struct NFT<AccountId, Balance> {
+		/// Token metadata
+		pub metadata: BoundedVec<u8, ConstU32<32>>,
+		/// Total issuance for the NFT
+		pub total_issuance: u64,
+		/// NFT Issuer
+		pub issuer: AccountId,
+		/// Token owner
+		pub owners: Vec<AccountId>,
+		///  Share Profits
+		pub share_profits: Vec<ShareProfitsInfo<AccountId>>,
+		pub price: Balance,
+		pub royalty: Balance
+	}
 
 	#[pallet::pallet]
 	pub struct Pallet<T>(_);
@@ -32,8 +107,65 @@ pub mod pallet {
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 		/// Type representing the weight of this pallet
 		type WeightInfo: WeightInfo;
+		/// The currency mechanism, used for paying for reserves.
+		type Currency: ReservableCurrency<Self::AccountId>;
+		/// Nft quantity
+		type Quantity: Member
+			+ Parameter
+			+ Default
+			+ Copy
+			+ HasCompact
+			+ AtLeast32BitUnsigned
+			+ MaxEncodedLen;
+
+		type NFTId: Member
+			+ Parameter
+			+ Default
+			+ Copy
+			+ HasCompact
+			+ AtLeast32BitUnsigned
+			+ MaxEncodedLen;
+
+		type CollectionId: Member
+			+ Parameter
+			+ Default
+			+ Copy
+			+ HasCompact
+			+ AtLeast32BitUnsigned
+			+ MaxEncodedLen;
+
+		/// The basic amount of funds that must be reserved for an asset class.
+		#[pallet::constant]
+		type CollectionNFTDeposit: Get<BalanceOf<Self>>;
+
+		/// The basic amount of funds that must be reserved for an asset instance.
+		#[pallet::constant]
+		type NFTDeposit: Get<BalanceOf<Self>>;
+
+		/// The basic amount of funds that must be reserved for an asset instance.
+		#[pallet::constant]
+		type MetaDataByteDeposit: Get<BalanceOf<Self>>;
 	}
 
+	// pub trait ConfigHelper<T: Config>: Config {
+	// 	fn create_collection_deposit(bytes_len: u32) -> BalanceOf<T>;
+	// 	fn mint_nft_deposit(bytes_len: u32) -> BalanceOf<T>;
+	// 	fn caculate_byes_deposit(bytes_len: u32) -> BalanceOf<T>;
+	// }
+
+	// impl<T: Config> ConfigHelper<T> for T {
+	// 	fn create_collection_deposit(bytes_len: u32) -> BalanceOf<T> {
+	// 		T::CollectionDeposit::get().saturating_add(Self::caculate_byes_deposit(bytes_len))
+	// 	}
+
+	// 	fn mint_nft_deposit(bytes_len: u32) -> BalanceOf<T> {
+	// 		T::NFTDeposit::get().saturating_add(Self::caculate_byes_deposit(bytes_len))
+	// 	}
+
+	// 	fn caculate_byes_deposit(bytes_len: u32) -> BalanceOf<T> {
+	// 		T::MetaDataByteDeposit::get().saturating_mul((bytes_len).into())
+	// 	}
+	// }
 	// The pallet's runtime storage items.
 	// https://docs.substrate.io/main-docs/build/runtime-storage/
 	#[pallet::storage]
@@ -47,62 +179,424 @@ pub mod pallet {
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// Event documentation should end with an array that provides descriptive names for event
-		/// parameters. [something, who]
-		SomethingStored { something: u32, who: T::AccountId },
+		/// An nft Collection was created.
+		CreatedCollection { collection_id: T::CollectionId, issuer: T::AccountId },
+		/// A nft NFT was minted.
+		MintedNFT {
+			collection_id: T::CollectionId,
+			nft_id: T::NFTId,
+			quantity: u64,
+			owner: T::AccountId,
+			caller: T::AccountId,
+		},
+		/// An nft NFT was burned.
+		BurnedNFT {
+			collection_id: T::CollectionId,
+			token_id: T::NFTId,
+			owner: T::AccountId,
+		},
+		/// An nft NFT was transferred.
+		TransferredNFT {
+			collection_id: T::CollectionId,
+			token_id: T::NFTId,
+			quantity: T::Quantity,
+			from: T::AccountId,
+			to: T::AccountId,
+			price: BalanceOf<T>,
+		},
+		SoldNFT {
+			collection_id: T::CollectionId,
+			token_id: T::NFTId,
+			quantity: T::Quantity,
+			from: T::AccountId,
+			to: T::AccountId,
+			price: BalanceOf<T>,
+		},
+		NFTSold {
+			collection_id: T::CollectionId,
+			token_id: T::NFTId,
+			price: BalanceOf<T>,
+			seller: T::AccountId,
+			buyer: T::AccountId,
+			royalty: BalanceOf<T>,
+		},
+		/// NFT info was updated
+		UpdatedNFT { collection_id: T::CollectionId, nft_id: T::NFTId },
+		UpdatedShareProfitList { collection_id: T::CollectionId, nft_id: T::NFTId },
+
 	}
 
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
-		/// Error names should be descriptive.
-		NoneValue,
-		/// Errors should have helpful documentation associated with them.
-		StorageOverflow,
+		/// Collection not found
+		CollectionNotFound,
+		/// NFT not found
+		NFTNotFound,
+		/// The operator is not the owner of the NFT and has no permission
+		NoPermission,
+		/// No available Collection ID
+		NoAvailableCollectionId,
+		/// No available NFT ID
+		NoAvailableNFTId,
+		/// Royalty rate great than RoyaltyRateLimit
+		RoyaltyRateTooHigh,
+		/// Quantity is invalid
+		InvalidQuantity,
+		/// Num overflow
+		NumOverflow,
+		/// At least one consumer is remaining so the NFT cannot be burend.
+		ConsumerRemaining,
+		NotNFTOwner,
 	}
 
-	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
-	// These functions materialize as "extrinsics", which are often compared to transactions.
-	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
+	/// Store collection info.
+	#[pallet::storage]
+	#[pallet::unbounded]
+	#[pallet::getter(fn collections)]
+	pub type Collections<T: Config> =
+		StorageMap<_, Twox64Concat, T::CollectionId, CollectionDetailsOf<T>>;
+
+	/// Artist Collection
+	#[pallet::storage]
+	#[pallet::unbounded]
+	#[pallet::getter(fn artists_collections)]
+	pub type ArtistCollections<T: Config> =
+		StorageMap<_, Twox64Concat, T::AccountId, Vec<CollectionDetailsOf<T>>>;
+
+	/// User Collection
+	#[pallet::storage]
+	#[pallet::unbounded]
+	#[pallet::getter(fn user_collections)]
+	pub type UserBuyNFTs<T: Config> =
+		StorageMap<_, Twox64Concat, T::AccountId, Vec<NFTDetailsOf<T>>>;
+
+	/// Store nft info.
+	#[pallet::storage]
+	#[pallet::unbounded]
+	#[pallet::getter(fn tokens)]
+	pub type NFTs<T: Config> = StorageDoubleMap<
+		_,
+		Twox64Concat,
+		T::CollectionId,
+		Twox64Concat,
+		T::NFTId,
+		NFTDetailsOf<T>,
+		OptionQuery,
+	>;
+
+	/// Next available collection ID.
+	#[pallet::storage]
+	#[pallet::getter(fn next_class_id)]
+	pub type NextCollectionId<T: Config> = StorageValue<_, T::CollectionId, ValueQuery>;
+
+	/// Next available token ID.
+	#[pallet::storage]
+	#[pallet::getter(fn next_token_id)]
+	pub type NextNFTId<T: Config> =
+		StorageMap<_, Twox64Concat, T::CollectionId, T::NFTId, ValueQuery>;
+
+	/// Storage version of the pallet.
+	///
+	/// New networks start with last version.
+	#[pallet::storage]
+	pub type StorageVersion<T: Config> = StorageValue<_, Releases, ValueQuery>;
+
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		/// An example dispatchable that takes a singles value as a parameter, writes the value to
-		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
 		#[pallet::call_index(0)]
 		#[pallet::weight(T::WeightInfo::do_something())]
-		pub fn do_something(origin: OriginFor<T>, something: u32) -> DispatchResult {
-			// Check that the extrinsic was signed and get the signer.
-			// This function will return an error if the extrinsic is not signed.
-			// https://docs.substrate.io/main-docs/build/origins/
-			let who = ensure_signed(origin)?;
+		pub fn create_collection(
+			origin: OriginFor<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
 
-			// Update storage.
-			<Something<T>>::put(something);
+			let collection_id = NextCollectionId::<T>::try_mutate(
+				|id| -> Result<T::CollectionId, DispatchError> {
+					let current_id = *id;
+					*id = id.checked_add(&One::one()).ok_or(Error::<T>::NoAvailableCollectionId)?;
+					Ok(current_id)
+				},
+			)?;
 
-			// Emit an event.
-			Self::deposit_event(Event::SomethingStored { something, who });
-			// Return a successful DispatchResultWithPostInfo
-			Ok(())
-		}
+			let collection_details = Collection {
+				collection_id: collection_id.clone(),
+				metadata,
+				issuer: issuer.clone(),
+			};
 
-		/// An example dispatchable that may throw a custom error.
-		#[pallet::call_index(1)]
-		#[pallet::weight(T::WeightInfo::cause_error())]
-		pub fn cause_error(origin: OriginFor<T>) -> DispatchResult {
-			let _who = ensure_signed(origin)?;
+			Collections::<T>::insert(collection_id, collection_details.clone());
 
-			// Read a value from storage.
-			match <Something<T>>::get() {
-				// Return an error if the value has not been set.
-				None => return Err(Error::<T>::NoneValue.into()),
-				Some(old) => {
-					// Increment the value read from storage; will error in the event of overflow.
-					let new = old.checked_add(1).ok_or(Error::<T>::StorageOverflow)?;
-					// Update the value in storage with the incremented result.
-					<Something<T>>::put(new);
+			ArtistCollections::<T>::try_mutate(
+				issuer.clone(),
+				|collections_option| -> Result<(), DispatchError> {
+					match collections_option {
+						Some(collections) => collections.push(collection_details.clone()),
+						None => *collections_option = Some(vec![collection_details.clone()]),
+					}
+
 					Ok(())
 				},
-			}
+			)?;
+
+			Self::deposit_event(Event::CreatedCollection { collection_id, issuer });
+			Ok(().into())
 		}
+
+		#[pallet::call_index(1)]
+		#[pallet::weight(T::WeightInfo::do_something())]
+		pub fn mint_nft(
+			origin: OriginFor<T>,
+			collection_id: T::CollectionId,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			quantity: u64,
+			royalty:BalanceOf<T>,
+			share_profits: Vec<ShareProfitsInfo<T::AccountId>>,
+			price: BalanceOf<T>,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+
+			// Check that the collection exists
+			let collection =
+				Collections::<T>::get(collection_id).ok_or(Error::<T>::CollectionNotFound)?;
+
+			// Check that the issuer is the owner of the collection
+			ensure!(collection.issuer == issuer, Error::<T>::NoPermission);
+
+			// Generate the next NFT id for the collection
+			let nft_id = NextNFTId::<T>::try_mutate(
+				collection_id,
+				|id| -> Result<T::NFTId, DispatchError> {
+					let current_id = *id;
+					*id = id.checked_add(&One::one()).ok_or(Error::<T>::NoAvailableNFTId)?;
+					Ok(current_id)
+				},
+			)?;
+
+			// Create the NFT instance
+			let nft_details = NFT {
+				metadata: metadata.clone(),
+				total_issuance: quantity.clone(),
+				issuer: issuer.clone(),
+				royalty,
+				owners: vec![issuer.clone()],
+				share_profits,
+				price,
+			};
+
+			// Insert the NFT instance to the NFTs storage
+			NFTs::<T>::insert(collection_id, nft_id, nft_details);
+
+			// Emit the MintedNFT event
+			Self::deposit_event(Event::MintedNFT {
+				collection_id,
+				nft_id,
+				quantity,
+				owner: issuer.clone(),
+				caller: issuer,
+			});
+
+			Ok(().into())
+		}
+
+		#[pallet::call_index(3)]
+		#[pallet::weight(T::WeightInfo::do_something())]
+		pub fn buy_nft(
+			origin: OriginFor<T>,
+			collection_id: T::CollectionId,
+			nft_id: T::NFTId,
+		) -> DispatchResultWithPostInfo {
+			let buyer = ensure_signed(origin)?;
+
+			// Retrieve the NFT.
+			let nft = NFTs::<T>::try_mutate_exists(
+				collection_id,
+				nft_id,
+				|nft_option| -> Result<_, DispatchError> {
+					let mut nft = nft_option.as_mut().ok_or(Error::<T>::NFTNotFound)?;
+
+					// Check if there are any tokens left to buy.
+					ensure!(
+						nft.total_issuance  > nft.owners.len().try_into().unwrap(),  // hypothetical conversion function
+						Error::<T>::InvalidQuantity
+					);
+
+					// Reserve the buyer's balance.
+					T::Currency::reserve(&buyer, nft.price.clone())
+						.map_err(|_| DispatchError::Other("Cannot reserve balance"))?;
+
+					// Transfer funds to the share profits addresses.
+					for info in &nft.share_profits {
+						// Convert BoundedVec<u8, ConstU32<32>> to &[u8] and then to [u8; 4]
+						let slice: &[u8] = info.percentage.as_slice();
+						if let Ok(array) = slice.try_into() as Result<[u8; 4], _> {
+							let percentage: u32 = u32::from_be_bytes(array);
+					
+							// Calculate amount
+							let amount = 
+							nft.price.clone() * percentage.into() /
+							 <<T as pallet::Config>::Currency as frame_support::traits::Currency<<T as frame_system::Config>::AccountId>>::Balance::from(100u32);
+
+							// Transfer
+							T::Currency::transfer(
+								&buyer,
+								&info.owners,
+								amount,
+								ExistenceRequirement::AllowDeath,
+							)
+							.map_err(|_| DispatchError::Other("Cannot transfer funds"))?;
+						} else {
+							// Handle error if the conversion fails
+							// e.g. return an error, log a message, etc.
+						}
+					}
+
+					// Update the NFT.
+					nft.owners.push(buyer.clone());
+
+				
+
+					Ok(nft.clone())
+				},
+			)?;
+
+			// Insert the NFT instance to the NFTs storage
+			UserBuyNFTs::<T>::try_mutate(buyer.clone(),|collections_option|-> Result<(),DispatchError> {
+				match collections_option {
+					Some(collection) => collection.push(nft.clone()),
+					None => *collections_option = Some(vec![nft.clone()])
+				}
+				Ok(())
+			})?;
+			// Emit event
+			Self::deposit_event(Event::TransferredNFT {
+				collection_id,
+				token_id: nft_id,
+				quantity: One::one(),
+				from: buyer.clone(),
+				to: buyer,
+				price: nft.price,
+			});
+
+			Ok(().into())
+		}
+	
+		#[pallet::call_index(4)]
+		#[pallet::weight(T::WeightInfo::do_something())]
+		pub fn burn_nft(
+			origin: OriginFor<T>,
+			collection_id: T::CollectionId,
+			nft_id: T::NFTId,
+		) -> DispatchResult {
+			let burner = ensure_signed(origin)?;
+		
+			// Check that the NFT exists
+			let nft =
+				NFTs::<T>::get(collection_id, nft_id).ok_or(Error::<T>::NFTNotFound)?;
+		
+			// Check that the burner is one of the owners of the NFT
+			ensure!(nft.owners.len() == 0, Error::<T>::NoPermission);
+		
+			// Remove NFT details
+			NFTs::<T>::remove(collection_id, nft_id);
+		
+			Self::deposit_event(Event::BurnedNFT {
+				collection_id,
+				token_id: nft_id,
+				owner: burner,
+			});
+		
+			Ok(().into())
+		}
+		
+		#[pallet::call_index(5)]
+		#[pallet::weight(T::WeightInfo::do_something())]
+		pub fn update_share_profit(
+			origin: OriginFor<T>,
+			collection_id: T::CollectionId,
+			nft_id: T::NFTId,
+			updated_share_profits: Vec<ShareProfitsInfo<T::AccountId>>,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+
+			// Check that the collection exists
+			let collection = Collections::<T>::get(collection_id).ok_or(Error::<T>::CollectionNotFound)?;
+
+			// Check that the NFT exists
+			let mut nft = NFTs::<T>::get(collection_id, nft_id).ok_or(Error::<T>::NFTNotFound)?;
+
+			// Check that the issuer is the owner of the NFT
+			ensure!(nft.issuer == issuer, Error::<T>::NoPermission);
+
+			// Update the share profit details
+			nft.share_profits = updated_share_profits;
+
+			// Store the updated NFT details
+			NFTs::<T>::insert(collection_id, nft_id, nft);
+
+			// Emit the UpdatedNFT event
+			Self::deposit_event(Event::UpdatedShareProfitList {
+				collection_id,
+				nft_id,
+			});
+
+			Ok(().into())
+		}
+
+		#[pallet::call_index(6)]
+		#[pallet::weight(T::WeightInfo::do_something())]
+		pub fn sell_nft(
+			origin: OriginFor<T>,
+			buyer: T::AccountId,
+			collection_id: T::CollectionId,
+			nft_id: T::NFTId,
+			price: BalanceOf<T>,
+		) -> DispatchResult {
+			let seller = ensure_signed(origin)?;
+		
+			NFTs::<T>::try_mutate_exists(
+				collection_id,
+				nft_id,
+				|nft_option| -> Result<_, DispatchError> {
+					let mut nft = nft_option.as_mut().ok_or(Error::<T>::NFTNotFound)?;
+		
+					// Ensure the seller is an owner of this NFT.
+					let index = nft.owners.iter().position(|x| *x == seller).ok_or(Error::<T>::NotNFTOwner)?;
+		
+					// Calculate the royalty.
+					let royalty_percentage: BalanceOf<T> = nft.royalty.into();
+					let royalty_amount = (price.clone() * royalty_percentage) / 
+					<<T as pallet::Config>::Currency as frame_support::traits::Currency<<T as frame_system::Config>::AccountId>>::Balance::from(100u32);
+		
+					// The remaining amount after subtracting the royalty.
+					let remaining_amount = price.clone() - royalty_amount;
+		
+					// Transfer the royalty to the creator.
+					T::Currency::transfer(&buyer, &nft.issuer, royalty_amount, ExistenceRequirement::KeepAlive)?;
+		
+					// Transfer the remaining balance to the current owner (seller).
+					T::Currency::transfer(&buyer, &seller, remaining_amount, ExistenceRequirement::KeepAlive)?;
+		
+					// Remove the seller from the owners.
+					nft.owners.remove(index);
+		
+					// Add the buyer to the owners.
+					nft.owners.push(buyer.clone());
+		
+					Self::deposit_event(Event::NFTSold {
+						collection_id,
+						token_id: nft_id,
+						price: price.clone(),
+						seller: seller.clone(),
+						buyer: buyer.clone(),
+						royalty: nft.royalty,
+					});
+		
+					Ok(())
+				}
+			)
+		}
+		
 	}
 }

@@ -1686,9 +1686,21 @@ impl pallet_nis::Config for Runtime {
 	type ThawThrottle = ThawThrottle;
 }
 
+parameter_types! {
+	pub const NFTCollectionDeposit: Balance = 1 * DOLLARS;
+	pub const NFTDeposit: Balance = 1 * CENTS;
+	pub const MetaDataByteDeposit: Balance = 10 * MILLICENTS;
+}
 impl pallet_nfts::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type WeightInfo = pallet_nfts::weights::SubstrateWeight<Runtime>;
+	type Quantity = u64;
+	type NFTId = u64;
+	type CollectionId = u64;
+	type Currency = Balances;
+	type CollectionNFTDeposit = NFTCollectionDeposit;
+	type NFTDeposit = NFTDeposit;
+	type MetaDataByteDeposit = MetaDataByteDeposit;
 }
 
 parameter_types! {
