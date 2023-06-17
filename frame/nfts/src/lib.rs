@@ -103,11 +103,11 @@ pub mod pallet {
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 	#[scale_info(skip_type_params(AccountId, Balance))]
 	pub struct AlbumTracks<AccountId, Balance,AlbumId> {
-		pub track_id: AlbumId,
+		pub track_id:Option< AlbumId>,
 		/// Token metadata
 		pub metadata: BoundedVec<u8, ConstU32<32>>,
 		/// Token owner
-		pub owners: Vec<AccountId>,
+		pub owners:Option<Vec<AccountId>>,
 		///  Share Profits
 		pub share_profits: Vec<ShareProfitsInfo<AccountId>>,
 		pub price: Balance,
@@ -413,6 +413,7 @@ pub mod pallet {
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
+
 		#[pallet::call_index(0)]
 		#[pallet::weight(T::WeightInfo::do_something())]
 		pub fn create_collection(
@@ -509,7 +510,6 @@ pub mod pallet {
 			Ok(().into())
 		}
 
-
 		#[pallet::call_index(7)]
 		#[pallet::weight(T::WeightInfo::do_something())]
 		pub fn mint_album(
@@ -518,7 +518,7 @@ pub mod pallet {
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			quantity: u64,
 			royalty:BalanceOf<T>,
-			tracks: Vec<AlbumTracks<T::AccountId,BalanceOf<T>,T::AlbumId>>
+			mut tracks: Vec<AlbumTracks<T::AccountId,BalanceOf<T>,T::AlbumId>>
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
@@ -538,6 +538,19 @@ pub mod pallet {
 					Ok(current_id)
 				},
 			)?;
+
+			for track in &mut tracks {
+				let track_id = NextAlbumId::<T>::try_mutate(
+					collection_id,
+					|id| -> Result<T::AlbumId, DispatchError> {
+						let current_id = *id;
+						*id = id.checked_add(&One::one()).ok_or(Error::<T>::NoAvailableAlbumId)?;
+						Ok(current_id)
+					},
+				)?;
+				track.track_id = Some(track_id);
+			}
+			
 
 			// Create the NFT instance
 			let album_details = Album {
