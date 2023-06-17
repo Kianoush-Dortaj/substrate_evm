@@ -44,6 +44,9 @@ pub mod pallet {
 	pub type NFTDetailsOf<T> =
 		NFT<<T as SystemConfig>::AccountId, BalanceOf<T>>;
 
+	pub type AlbumDetailsOf<T> =
+		Album<<T as SystemConfig>::AccountId, BalanceOf<T>,<T as Config>::AlbumId>;
+
 	// A value placed in storage that represents the current version of the Scheduler storage.
 	// This value is used by the `on_runtime_upgrade` logic to determine whether we run
 	// storage migration logic.
@@ -97,6 +100,34 @@ pub mod pallet {
 		pub royalty: Balance
 	}
 
+	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+	#[scale_info(skip_type_params(AccountId, Balance))]
+	pub struct AlbumTracks<AccountId, Balance,AlbumId> {
+		pub track_id: AlbumId,
+		/// Token metadata
+		pub metadata: BoundedVec<u8, ConstU32<32>>,
+		/// Token owner
+		pub owners: Vec<AccountId>,
+		///  Share Profits
+		pub share_profits: Vec<ShareProfitsInfo<AccountId>>,
+		pub price: Balance,
+	}
+
+	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+	#[scale_info(skip_type_params(AccountId, Balance))]
+	pub struct Album<AccountId,Balance,AlbumId> {
+			/// Token metadata
+			pub metadata: BoundedVec<u8, ConstU32<32>>,
+			/// Total issuance for the NFT
+			pub total_issuance: u64,
+			/// NFT Issuer
+			pub issuer: AccountId,
+			/// Token owner
+			pub owners: Vec<AccountId>,
+			pub tracks:Vec<AlbumTracks<AccountId,Balance,AlbumId>>,
+			pub royalty: Balance
+	}
+
 	#[pallet::pallet]
 	pub struct Pallet<T>(_);
 
@@ -119,6 +150,14 @@ pub mod pallet {
 			+ MaxEncodedLen;
 
 		type NFTId: Member
+			+ Parameter
+			+ Default
+			+ Copy
+			+ HasCompact
+			+ AtLeast32BitUnsigned
+			+ MaxEncodedLen;
+
+			type AlbumId: Member
 			+ Parameter
 			+ Default
 			+ Copy
@@ -182,9 +221,17 @@ pub mod pallet {
 		/// An nft Collection was created.
 		CreatedCollection { collection_id: T::CollectionId, issuer: T::AccountId },
 		/// A nft NFT was minted.
+		
 		MintedNFT {
 			collection_id: T::CollectionId,
 			nft_id: T::NFTId,
+			quantity: u64,
+			owner: T::AccountId,
+			caller: T::AccountId,
+		},
+		MintedAlbum {
+			collection_id: T::CollectionId,
+			album_id: T::AlbumId,
 			quantity: u64,
 			owner: T::AccountId,
 			caller: T::AccountId,
@@ -195,10 +242,24 @@ pub mod pallet {
 			token_id: T::NFTId,
 			owner: T::AccountId,
 		},
+		BurnedAlbum {
+			collection_id: T::CollectionId,
+			album_id: T::AlbumId,
+			owner: T::AccountId,
+		},
 		/// An nft NFT was transferred.
 		TransferredNFT {
 			collection_id: T::CollectionId,
 			token_id: T::NFTId,
+			quantity: T::Quantity,
+			from: T::AccountId,
+			to: T::AccountId,
+			price: BalanceOf<T>,
+		},
+		/// An nft NFT was transferred.
+		TransferredAlbum {
+			collection_id: T::CollectionId,
+			album_id: T::AlbumId,
 			quantity: T::Quantity,
 			from: T::AccountId,
 			to: T::AccountId,
@@ -212,6 +273,14 @@ pub mod pallet {
 			to: T::AccountId,
 			price: BalanceOf<T>,
 		},
+		SoldAlbum {
+			collection_id: T::CollectionId,
+			album_id: T::AlbumId,
+			quantity: T::Quantity,
+			from: T::AccountId,
+			to: T::AccountId,
+			price: BalanceOf<T>,
+		},
 		NFTSold {
 			collection_id: T::CollectionId,
 			token_id: T::NFTId,
@@ -220,9 +289,19 @@ pub mod pallet {
 			buyer: T::AccountId,
 			royalty: BalanceOf<T>,
 		},
+		AlbumSold {
+			collection_id: T::CollectionId,
+			album_id: T::AlbumId,
+			price: BalanceOf<T>,
+			seller: T::AccountId,
+			buyer: T::AccountId,
+			royalty: BalanceOf<T>,
+		},
 		/// NFT info was updated
 		UpdatedNFT { collection_id: T::CollectionId, nft_id: T::NFTId },
+		UpdatedAlbum { collection_id: T::CollectionId, nft_id: T::AlbumId },
 		UpdatedShareProfitList { collection_id: T::CollectionId, nft_id: T::NFTId },
+		UpdatedShareProfitListAlbumtracks { collection_id: T::CollectionId, album_id: T::AlbumId },
 
 	}
 
@@ -233,6 +312,8 @@ pub mod pallet {
 		CollectionNotFound,
 		/// NFT not found
 		NFTNotFound,
+		AlbumNotFound,
+		NoAvailableAlbumId,
 		/// The operator is not the owner of the NFT and has no permission
 		NoPermission,
 		/// No available Collection ID
@@ -248,6 +329,7 @@ pub mod pallet {
 		/// At least one consumer is remaining so the NFT cannot be burend.
 		ConsumerRemaining,
 		NotNFTOwner,
+		NotAlbumOwner,
 	}
 
 	/// Store collection info.
@@ -271,10 +353,17 @@ pub mod pallet {
 	pub type UserBuyNFTs<T: Config> =
 		StorageMap<_, Twox64Concat, T::AccountId, Vec<NFTDetailsOf<T>>>;
 
+			/// User Albums
+	#[pallet::storage]
+	#[pallet::unbounded]
+	#[pallet::getter(fn user_albums)]
+	pub type UserBuyAlbums<T: Config> =
+		StorageMap<_, Twox64Concat, T::AccountId, Vec<AlbumDetailsOf<T>>>;
+
 	/// Store nft info.
 	#[pallet::storage]
 	#[pallet::unbounded]
-	#[pallet::getter(fn tokens)]
+	#[pallet::getter(fn nfts)]
 	pub type NFTs<T: Config> = StorageDoubleMap<
 		_,
 		Twox64Concat,
@@ -285,6 +374,20 @@ pub mod pallet {
 		OptionQuery,
 	>;
 
+		/// Store nft info.
+		#[pallet::storage]
+		#[pallet::unbounded]
+		#[pallet::getter(fn albums)]
+		pub type Albums<T: Config> = StorageDoubleMap<
+			_,
+			Twox64Concat,
+			T::CollectionId,
+			Twox64Concat,
+			T::AlbumId,
+			AlbumDetailsOf<T>,
+			OptionQuery,
+		>;
+
 	/// Next available collection ID.
 	#[pallet::storage]
 	#[pallet::getter(fn next_class_id)]
@@ -292,9 +395,15 @@ pub mod pallet {
 
 	/// Next available token ID.
 	#[pallet::storage]
-	#[pallet::getter(fn next_token_id)]
+	#[pallet::getter(fn next_nft_id)]
 	pub type NextNFTId<T: Config> =
 		StorageMap<_, Twox64Concat, T::CollectionId, T::NFTId, ValueQuery>;
+
+			/// Next available token ID.
+	#[pallet::storage]
+	#[pallet::getter(fn next_album_id)]
+	pub type NextAlbumId<T: Config> =
+		StorageMap<_, Twox64Concat, T::CollectionId, T::AlbumId, ValueQuery>;
 
 	/// Storage version of the pallet.
 	///
@@ -380,7 +489,7 @@ pub mod pallet {
 				total_issuance: quantity.clone(),
 				issuer: issuer.clone(),
 				royalty,
-				owners: vec![issuer.clone()],
+				owners: vec![],
 				share_profits,
 				price,
 			};
@@ -391,7 +500,62 @@ pub mod pallet {
 			// Emit the MintedNFT event
 			Self::deposit_event(Event::MintedNFT {
 				collection_id,
-				nft_id,
+				nft_id: nft_id,
+				quantity,
+				owner: issuer.clone(),
+				caller: issuer,
+			});
+
+			Ok(().into())
+		}
+
+
+		#[pallet::call_index(7)]
+		#[pallet::weight(T::WeightInfo::do_something())]
+		pub fn mint_album(
+			origin: OriginFor<T>,
+			collection_id: T::CollectionId,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			quantity: u64,
+			royalty:BalanceOf<T>,
+			tracks: Vec<AlbumTracks<T::AccountId,BalanceOf<T>,T::AlbumId>>
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+
+			// Check that the collection exists
+			let collection =
+				Collections::<T>::get(collection_id).ok_or(Error::<T>::CollectionNotFound)?;
+
+			// Check that the issuer is the owner of the collection
+			ensure!(collection.issuer == issuer, Error::<T>::NoPermission);
+
+			// Generate the next NFT id for the collection
+			let album_id = NextAlbumId::<T>::try_mutate(
+				collection_id,
+				|id| -> Result<T::AlbumId, DispatchError> {
+					let current_id = *id;
+					*id = id.checked_add(&One::one()).ok_or(Error::<T>::NoAvailableAlbumId)?;
+					Ok(current_id)
+				},
+			)?;
+
+			// Create the NFT instance
+			let album_details = Album {
+				metadata: metadata.clone(),
+				total_issuance: quantity.clone(),
+				issuer: issuer.clone(),
+				royalty,
+				tracks,
+				owners: vec![],
+			};
+
+			// Insert the NFT instance to the NFTs storage
+			Albums::<T>::insert(collection_id, album_id, album_details);
+
+			// Emit the MintedNFT event
+			Self::deposit_event(Event::MintedAlbum {
+				collection_id,
+				album_id,
 				quantity,
 				owner: issuer.clone(),
 				caller: issuer,

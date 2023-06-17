@@ -1696,6 +1696,7 @@ impl pallet_nfts::Config for Runtime {
 	type WeightInfo = pallet_nfts::weights::SubstrateWeight<Runtime>;
 	type Quantity = u64;
 	type NFTId = u64;
+	type AlbumId = u64;
 	type CollectionId = u64;
 	type Currency = Balances;
 	type CollectionNFTDeposit = NFTCollectionDeposit;
