@@ -851,7 +851,6 @@ pub mod pallet {
 			Ok(().into())
 		}
 	
-
 		#[pallet::call_index(5)]
 		#[pallet::weight(T::WeightInfo::do_something())]
 		pub fn update_share_profit(
@@ -923,7 +922,6 @@ pub mod pallet {
 			Ok(().into())
 		}
 		
-
 		#[pallet::call_index(6)]
 		#[pallet::weight(T::WeightInfo::do_something())]
 		pub fn sell_nft(
