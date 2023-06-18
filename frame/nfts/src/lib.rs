@@ -88,7 +88,7 @@ pub mod pallet {
 	#[scale_info(skip_type_params(AccountId,Balance))]
 	pub struct Owners<AccountId,Balance> {
 		/// Token metadata
-		pub total_supply: Balance, // change this according to your needs
+		pub total_supply:Option<Balance>, // change this according to your needs
 		/// Token owner
 		pub address: AccountId,
 	}
@@ -116,7 +116,7 @@ pub mod pallet {
 		/// Token metadata
 		pub metadata: BoundedVec<u8, ConstU32<32>>,
 		/// Token owner
-		pub owners: Vec<Owners<AccountId,Balance>>,
+		pub owners: Option<Vec<Owners<AccountId,Balance>>>,
 		///  Share Profits
 		pub share_profits: Vec<ShareProfitsInfo<AccountId>>,
 		pub price: Balance,
@@ -130,7 +130,7 @@ pub mod pallet {
 			/// NFT Issuer
 			pub issuer: AccountId,
 			/// Token owner
-			pub owners: Vec<Owners<AccountId,Balance>>,
+			pub owners: Option<Vec<Owners<AccountId,Balance>>>,
 			pub tracks:Vec<AlbumTracks<AccountId,Balance,AlbumId>>,
 			pub royalty: Balance,
 			pub end_date:BoundedVec<u8, ConstU32<32>>,
@@ -645,7 +645,7 @@ pub mod pallet {
 				issuer: issuer.clone(),
 				royalty,
 				tracks,
-				owners: vec![],
+				owners: Some(vec![]),
 				end_date,
 			};
 
@@ -671,9 +671,12 @@ pub mod pallet {
 			album_id: T::AlbumId,
 			total_supply:BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
+			
 			let buyer = ensure_signed(origin)?;
+			
 			let mut price = BalanceOf::<T>::default();
 			// Retrieve the Album.
+		
 			let album = Albums::<T>::try_mutate_exists(
 				collection_id.clone(),
 				album_id,
@@ -738,11 +741,16 @@ pub mod pallet {
 					
 					 let ownres = Owners::<T::AccountId,BalanceOf<T>>{
 						address: buyer.clone(),
-						total_supply: total_supply.clone(),
+						total_supply: Some(total_supply.clone()),
 					};
 					
-					// Update the NFT.
-					album.owners.push(ownres);
+					if let Some(owners_vec) = &mut album.owners {
+						owners_vec.push(ownres);
+					} else {
+						album.owners = Some(vec![ownres]);
+					}
+					
+					
 					
 				
 
