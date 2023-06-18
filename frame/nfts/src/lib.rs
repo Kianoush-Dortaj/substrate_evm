@@ -725,7 +725,7 @@ pub mod pallet {
 							T::Currency::transfer(
 								&buyer.clone(),
 								&info.owner_address,
-								amount,
+								transfer_amount,
 								ExistenceRequirement::AllowDeath,
 							)
 							.map_err(|_| Error::<T>::CanNotTransferCurrency)?;
