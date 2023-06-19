@@ -1211,18 +1211,6 @@ pub mod pallet {
 				|album_option| -> Result<_, DispatchError> {
 					let mut album = album_option.as_mut().ok_or(Error::<T>::AlbumNotFound)?;
 
-					// let end_date_str = String::from_utf8(album.end_date.clone())
-					// .map_err(|_| DispatchError::Other("Cannot decode end_date to utf8"))?;
-
-					// let end_date: DateTime<Utc> = serde_json::from_str(&end_date_str)
-					// 	.map_err(|_| DispatchError::Other("Cannot deserialize end_date from utf8"))?;
-
-					// let now = chrono::Utc::now();
-					// ensure!(
-					// 	now <= end_date,
-					// 	Error::<T>::ExpiredBuyAlbum
-					// );
-
 					for track in &album.tracks {
 						// Reserve the buyer's balance.
 
@@ -1424,6 +1412,9 @@ pub mod pallet {
 						total_price.clone(),
 						percentage.clone(),
 					);
+					log::info!("******************************");
+					log::info!("******{:?}",transfer_amount);
+					log::info!("------------------------------");
 
 					// Transfer
 					T::Currency::transfer(
