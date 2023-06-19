@@ -6203,7 +6203,6 @@ dependencies = [
  "frame-system",
  "log",
  "pallet-balances",
- "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
  "sp-arithmetic",

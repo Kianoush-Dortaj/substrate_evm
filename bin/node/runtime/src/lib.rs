@@ -1702,7 +1702,6 @@ impl pallet_nfts::Config for Runtime {
 	type CollectionNFTDeposit = NFTCollectionDeposit;
 	type NFTDeposit = NFTDeposit;
 	type MetaDataByteDeposit = MetaDataByteDeposit;
-	type TimeProvider = pallet_timestamp::Pallet<Runtime>;
 }
 
 parameter_types! {
