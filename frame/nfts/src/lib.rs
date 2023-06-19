@@ -8,6 +8,7 @@ use frame_support::sp_runtime::{
 	traits::{AtLeast32BitUnsigned, CheckedAdd, Member, One},
 	DispatchError,
 };
+use sp_runtime::traits::UniqueSaturatedFrom;
 
 use frame_support::traits::UnixTime;
 
@@ -77,7 +78,7 @@ pub mod pallet {
 	#[scale_info(skip_type_params(AccountId))]
 	pub struct ShareProfitsInfo<AccountId> {
 		/// Token metadata
-		pub percentage: BoundedVec<u8, ConstU32<32>>,
+		pub percentage: u64,
 		/// Token owner
 		pub owner_address: AccountId,
 	}
@@ -339,11 +340,11 @@ pub mod pallet {
 			total_supply: BalanceOf<Self>,
 		) -> BalanceOf<Self>;
 
-		fn calc_transfer_amount_with_percentage(
-			price: BalanceOf<Self>,
-			total_supply: BalanceOf<Self>,
-			pecentage: u32,
-		) -> BalanceOf<Self>;
+		// fn calc_transfer_amount_with_percentage(
+		// 	price: BalanceOf<Self>,
+		// 	total_supply: BalanceOf<Self>,
+		// 	pecentage: u32,
+		// ) -> BalanceOf<Self>;
 
 		fn generate_nft_id(collection_id: Self::CollectionId)
 			-> Result<Self::NFTId, DispatchError>;
@@ -356,6 +357,12 @@ pub mod pallet {
 			royalty: &BalanceOf<Self>,
 			price: &BalanceOf<Self>,
 		) -> Result<BalanceOf<Self>, DispatchError>;
+		
+		fn calc_transfer_amount_with_percentage(
+			price: BalanceOf<Self>,
+			total_supply: BalanceOf<Self>,
+			percentage: u64,
+		) -> BalanceOf<Self>;
 	}
 
 	impl<T: Config> ConfigHelper for T {
@@ -365,17 +372,35 @@ pub mod pallet {
 			total_price
 		}
 
-		#[inline(always)]
-		fn calc_transfer_amount_with_percentage(
+		 fn calc_transfer_amount_with_percentage(
 			price: BalanceOf<T>,
-			total_price: BalanceOf<T>,
-			percentage: u32,
+			total_supply: BalanceOf<T>,
+			percentage: u64,
 		) -> BalanceOf<T> {
-			let amount = price.clone() * percentage.into() / BalanceOf::<T>::from(100u32);
-
-			let transfer_amount = amount * total_price;
-			transfer_amount
+			let price_as_u64: u64 = TryInto::<u64>::try_into(price)
+				.ok()
+				.expect("Balance should be convertible to u64; qed");
+				
+			let total_supply_as_u64: u64 = TryInto::<u64>::try_into(total_supply)
+				.ok()
+				.expect("Balance should be convertible to u64; qed");
+	
+			let amount_to_transfer_as_u64 = price_as_u64 * total_supply_as_u64 * percentage / 100;
+			let amount_to_transfer: BalanceOf<T> = UniqueSaturatedFrom::unique_saturated_from(amount_to_transfer_as_u64);
+			amount_to_transfer
 		}
+
+		// #[inline(always)]
+		// fn calc_transfer_amount_with_percentage(
+		// 	price: BalanceOf<T>,
+		// 	total_price: BalanceOf<T>,
+		// 	percentage: u32,
+		// ) -> BalanceOf<T> {
+		// 	let amount = price.clone() * percentage.into() / BalanceOf::<T>::from(100u32);
+
+		// 	let transfer_amount = amount * total_price;
+		// 	transfer_amount
+		// }
 
 		#[inline(always)]
 		fn generate_nft_id(collection_id: T::CollectionId) -> Result<T::NFTId, DispatchError> {
@@ -659,7 +684,7 @@ pub mod pallet {
 			collection_id: T::CollectionId,
 			album_id: T::AlbumId,
 			price: BalanceOf<T>,
-			total_supply:BalanceOf<T>,
+			total_supply: BalanceOf<T>,
 		) -> DispatchResult {
 			let seller = ensure_signed(origin)?;
 
@@ -693,17 +718,17 @@ pub mod pallet {
 
 					let mut index: usize = 0;
 					// Ensure the seller is an owner of this Album.
-					 match &album.owners {
+					match &album.owners {
 						Some(ref owners) => {
 							let mut owners = owners.clone();
 							index = Self::find_index_owner(&buyer, &owners)?;
 							// Remove the seller from the owners.
 							owners.remove(index);
-					
+
 							// Add the buyer to the owners.
-							owners.push(Owners{
-								address:buyer.clone(),
-								total_supply:Some(total_supply.clone()),
+							owners.push(Owners {
+								address: buyer.clone(),
+								total_supply: Some(total_supply.clone()),
 							});
 							Ok(())
 						},
@@ -1056,7 +1081,10 @@ pub mod pallet {
 			seller: &T::AccountId,
 			owners: &Vec<Owners<T::AccountId, BalanceOf<T>>>,
 		) -> Result<usize, Error<T>> {
-			let userId = owners.iter().position(|x| x.address == *seller).ok_or(Error::<T>::NotAlbumOwner);
+			let userId = owners
+				.iter()
+				.position(|x| x.address == *seller)
+				.ok_or(Error::<T>::NotAlbumOwner);
 
 			userId
 		}
@@ -1251,12 +1279,12 @@ pub mod pallet {
 
 		#[transactional]
 		fn do_sell_album(
-			seller:T::AccountId,
+			seller: T::AccountId,
 			buyer: T::AccountId,
 			collection_id: T::CollectionId,
 			album_id: T::AlbumId,
 			price: BalanceOf<T>,
-			total_supply:BalanceOf<T>,
+			total_supply: BalanceOf<T>,
 		) -> DispatchResult {
 			// Retrieve the Album.
 			Albums::<T>::try_mutate_exists(
@@ -1289,17 +1317,17 @@ pub mod pallet {
 
 					let mut index: usize = 0;
 					// Ensure the seller is an owner of this Album.
-					 match &album.owners {
+					match &album.owners {
 						Some(ref owners) => {
 							let mut owners = owners.clone();
 							index = Self::find_index_owner(&buyer, &owners)?;
 							// Remove the seller from the owners.
 							owners.remove(index);
-					
+
 							// Add the buyer to the owners.
-							owners.push(Owners{
-								address:buyer.clone(),
-								total_supply:Some(total_supply.clone()),
+							owners.push(Owners {
+								address: buyer.clone(),
+								total_supply: Some(total_supply.clone()),
 							});
 							Ok(())
 						},
@@ -1346,9 +1374,7 @@ pub mod pallet {
 					Ok(())
 				},
 			)
-	
 		}
-
 
 		fn user_buy_nft(
 			issuer: &T::AccountId,
@@ -1398,36 +1424,51 @@ pub mod pallet {
 			total_supply: &BalanceOf<T>,
 		) -> Result<(), DispatchError> {
 			for info in &track.share_profits {
-				// Convert BoundedVec<u8, ConstU32<32>> to &[u8] and then to [u8; 4]
-				let slice: &[u8] = info.percentage.as_slice();
-				if let Ok(array) = slice.try_into() as Result<[u8; 4], _> {
-					let percentage: u32 = u32::from_be_bytes(array);
-					// price += track.price;
-					// Calculate amount
-
-					let total_price = T::calc_total_price(track.price, *total_supply);
-
-					let transfer_amount = T::calc_transfer_amount_with_percentage(
-						track.price.clone(),
-						total_price.clone(),
-						percentage.clone(),
-					);
-					log::info!("******************************");
-					log::info!("******{:?}",transfer_amount);
-					log::info!("------------------------------");
-
-					// Transfer
-					T::Currency::transfer(
-						&buyer.clone(),
-						&info.owner_address,
-						transfer_amount,
-						ExistenceRequirement::AllowDeath,
-					)
-					.map_err(|_| Error::<T>::CanNotTransferCurrency)?;
-				}
+				let amount_to_transfer = T::calc_transfer_amount_with_percentage(track.price, total_supply.clone(), info.percentage);
+		
+				T::Currency::transfer(
+					&buyer, 
+					&info.owner_address, 
+					amount_to_transfer, 
+					ExistenceRequirement::AllowDeath
+				)?;
 			}
-
-			Ok(()).into()
+		
+			Ok(())
 		}
+
+
+		// fn do_transfer_share_profit(
+		// 	buyer: &T::AccountId,
+		// 	track: &AlbumTracks<T::AccountId, BalanceOf<T>, T::AlbumId>,
+		// 	total_supply: &BalanceOf<T>,
+		// ) -> Result<(), DispatchError> {
+		// 	for info in &track.share_profits {
+		// 		// price += track.price;
+		// 		// Calculate amount
+
+		// 		let total_price = T::calc_total_price(track.price, *total_supply);
+
+		// 		let transfer_amount = T::calc_transfer_amount_with_percentage(
+		// 			track.price.clone(),
+		// 			total_price.clone(),
+		// 			percentage.clone(),
+		// 		);
+		// 		log::info!("******************************");
+		// 		log::info!("******{:?}", transfer_amount);
+		// 		log::info!("------------------------------");
+
+		// 		// Transfer
+		// 		T::Currency::transfer(
+		// 			&buyer.clone(),
+		// 			&info.owner_address,
+		// 			transfer_amount,
+		// 			ExistenceRequirement::AllowDeath,
+		// 		)
+		// 		.map_err(|_| Error::<T>::CanNotTransferCurrency)?;
+		// 	}
+
+		// 	Ok(()).into()
+		// }
 	}
 }
