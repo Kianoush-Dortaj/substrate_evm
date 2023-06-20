@@ -956,6 +956,8 @@ pub mod pallet {
 
 			// let max_allow_royalty_percent_in_balance: BalanceOf<T> =
 			// 	config.max_allow_royalty_percent.saturated_into::<BalanceOf<T>>();
+			log::info!("------------ {:?}",config.max_allow_royalty_percent);
+			log::info!("------------ {:?}",royalty);
 
 			ensure!(config.max_allow_royalty_percent <= royalty, Error::<T>::NotAllowToSetRoyalty);
 
