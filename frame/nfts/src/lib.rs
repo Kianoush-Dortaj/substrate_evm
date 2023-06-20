@@ -119,7 +119,7 @@ pub mod pallet {
 		pub share_profits: Vec<ShareProfitsInfo<AccountId>>,
 		pub price: Balance,
 		pub royalty: u64,
-		pub end_date: BoundedVec<u8, ConstU32<32>>,
+		pub end_date: u64,
 	}
 
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -146,7 +146,7 @@ pub mod pallet {
 		pub owners: Option<Vec<Owners<AccountId, Balance>>>,
 		pub tracks: Vec<AlbumTracks<AccountId, Balance, AlbumId>>,
 		pub royalty: u64,
-		pub end_date: BoundedVec<u8, ConstU32<32>>,
+		pub end_date: u64,
 	}
 
 	#[pallet::pallet]
@@ -154,11 +154,11 @@ pub mod pallet {
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
-	pub trait Config: frame_system::Config {
+	pub trait Config: frame_system::Config + pallet_timestamp::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 		/// Type representing the weight of this pallet
-		type WeightInfo: WeightInfo;
+		type PalletWeightInfo: WeightInfo;
 		/// The currency mechanism, used for paying for reserves.
 		type Currency: ReservableCurrency<Self::AccountId>;
 		/// Nft quantity
@@ -551,7 +551,7 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		#[pallet::call_index(0)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn create_collection(
 			origin: OriginFor<T>,
 			metadata: BoundedVec<u8, ConstU32<32>>,
@@ -562,7 +562,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(1)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn mint_nft(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
@@ -570,7 +570,7 @@ pub mod pallet {
 			royalty: u64,
 			share_profits: Vec<ShareProfitsInfo<T::AccountId>>,
 			price: BalanceOf<T>,
-			end_date: BoundedVec<u8, ConstU32<32>>,
+			end_date: u64,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
@@ -586,7 +586,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(2)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn like_item_nft(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
@@ -619,7 +619,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(3)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn like_item_album(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
@@ -655,14 +655,14 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(4)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn mint_album(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			royalty: u64,
 			mut tracks: Vec<AlbumTracks<T::AccountId, BalanceOf<T>, T::AlbumId>>,
-			end_date: BoundedVec<u8, ConstU32<32>>,
+			end_date: u64,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
@@ -670,7 +670,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(5)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn buy_album(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
@@ -683,7 +683,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(6)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn sell_album(
 			origin: OriginFor<T>,
 			buyer: T::AccountId,
@@ -698,7 +698,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(7)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn set_config(
 			origin: OriginFor<T>,
 			royalty_fee: u64,
@@ -710,7 +710,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(8)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn buy_nft(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
@@ -723,7 +723,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(11)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn update_share_profit_nft(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
@@ -736,7 +736,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(9)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn sell_nft(
 			origin: OriginFor<T>,
 			buyer: T::AccountId,
@@ -750,7 +750,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(10)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn update_share_profit_album(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
@@ -770,7 +770,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(12)]
-		#[pallet::weight(T::WeightInfo::do_something())]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn burn_nft(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
@@ -782,7 +782,7 @@ pub mod pallet {
 		}
 
 		// #[pallet::call_index(11)]
-		// #[pallet::weight(T::WeightInfo::do_something())]
+		// #[pallet::weight(T::PalletWeightInfo::do_something())]
 		// pub fn burn_album(
 		// 	origin: OriginFor<T>,
 		// 	collection_id: T::CollectionId,
@@ -893,7 +893,7 @@ pub mod pallet {
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			royalty: u64,
 			mut tracks: Vec<AlbumTracks<T::AccountId, BalanceOf<T>, T::AlbumId>>,
-			end_date: BoundedVec<u8, ConstU32<32>>,
+			end_date: u64,
 		) -> DispatchResult {
 			// Check that the collection exists
 			let collection = Self::get_collection(&collection_id)?;
@@ -944,7 +944,7 @@ pub mod pallet {
 			royalty: u64,
 			share_profits: Vec<ShareProfitsInfo<T::AccountId>>,
 			price: BalanceOf<T>,
-			end_date: BoundedVec<u8, ConstU32<32>>,
+			end_date: u64,
 		) -> DispatchResult {
 			// Check that the collection exists
 			let collection =
@@ -1061,6 +1061,16 @@ pub mod pallet {
 				album_id,
 				|album_option| -> Result<_, DispatchError> {
 					let mut album = album_option.as_mut().ok_or(Error::<T>::AlbumNotFound)?;
+
+					// Get the current time from the timestamp pallet.
+					let now = <pallet_timestamp::Pallet<T>>::get();
+
+					let now_as_u64_millis = Self::convert_moment_to_u64_in_milliseconds(now)?;
+
+					ensure!(
+						now_as_u64_millis > album.end_date,
+						"Current date is not after end date."
+					);
 
 					for track in &album.tracks {
 						// Reserve the buyer's balance.
@@ -1488,5 +1498,16 @@ pub mod pallet {
 
 			Ok(().into())
 		}
+	
+		fn convert_moment_to_u64_in_milliseconds(date: T::Moment) -> Result<u64, DispatchError> {
+			let date_as_u64_millis;
+			if let Some(_date_as_u64) = TryInto::<u64>::try_into(date).ok() {
+				date_as_u64_millis = _date_as_u64;
+			} else {
+				return Err(DispatchError::Other("Unable to convert Moment to i64 for date"));
+			}
+			return Ok(date_as_u64_millis);
+		}
+
 	}
 }

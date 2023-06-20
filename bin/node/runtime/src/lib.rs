@@ -1693,7 +1693,7 @@ parameter_types! {
 }
 impl pallet_nfts::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
-	type WeightInfo = pallet_nfts::weights::SubstrateWeight<Runtime>;
+	type PalletWeightInfo = pallet_nfts::weights::SubstrateWeight<Runtime>;
 	type Quantity = u64;
 	type NFTId = u64;
 	type AlbumId = u64;
