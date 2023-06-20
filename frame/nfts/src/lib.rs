@@ -902,7 +902,7 @@ pub mod pallet {
 			// Check that the issuer is the owner of the collection
 			ensure!(collection.issuer == issuer, Error::<T>::NoPermission);
 
-			ensure!(config.max_allow_royalty_percent <= royalty, Error::<T>::NotAllowToSetRoyalty);
+			ensure!(config.max_allow_royalty_percent >= royalty, Error::<T>::NotAllowToSetRoyalty);
 
 			// Generate the next Alnume id for the collection
 			let album_id = T::generate_album_id(&collection_id)?;
@@ -956,10 +956,8 @@ pub mod pallet {
 
 			// let max_allow_royalty_percent_in_balance: BalanceOf<T> =
 			// 	config.max_allow_royalty_percent.saturated_into::<BalanceOf<T>>();
-			log::info!("------------ {:?}",config.max_allow_royalty_percent);
-			log::info!("------------ {:?}",royalty);
 
-			ensure!(config.max_allow_royalty_percent <= royalty, Error::<T>::NotAllowToSetRoyalty);
+			ensure!(config.max_allow_royalty_percent >= royalty, Error::<T>::NotAllowToSetRoyalty);
 
 			// Create the NFT instance
 			let nft_details = NFT {
