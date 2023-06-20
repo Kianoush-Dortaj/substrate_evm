@@ -778,7 +778,7 @@ pub mod pallet {
 		) -> DispatchResult {
 			let burner = ensure_signed(origin)?;
 
-			Self::do_butn_nft(burner,collection_id, nft_id)
+			Self::do_butn_nft(burner, collection_id, nft_id)
 		}
 
 		// #[pallet::call_index(11)]
@@ -1440,7 +1440,11 @@ pub mod pallet {
 			Ok(().into())
 		}
 
-		fn do_butn_nft(burner:T::AccountId,collection_id: T::CollectionId, nft_id: T::NFTId) -> DispatchResult {
+		fn do_butn_nft(
+			burner: T::AccountId,
+			collection_id: T::CollectionId,
+			nft_id: T::NFTId,
+		) -> DispatchResult {
 			// Check that the NFT exists
 			let nft = NFTs::<T>::get(collection_id, nft_id).ok_or(Error::<T>::NFTNotFound)?;
 
@@ -1462,9 +1466,14 @@ pub mod pallet {
 			Ok(().into())
 		}
 
-		fn do_butn_album(burner:T::AccountId,collection_id: T::CollectionId, album_id: T::AlbumId) -> DispatchResult {
+		fn do_butn_album(
+			burner: T::AccountId,
+			collection_id: T::CollectionId,
+			album_id: T::AlbumId,
+		) -> DispatchResult {
 			// Check that the NFT exists
-			let album = Albums::<T>::get(collection_id, album_id).ok_or(Error::<T>::AlbumNotFound)?;
+			let album =
+				Albums::<T>::get(collection_id, album_id).ok_or(Error::<T>::AlbumNotFound)?;
 
 			// Check that the burner is one of the owners of the Album
 			ensure!(album.issuer == burner, Error::<T>::NoPermission);
@@ -1475,11 +1484,7 @@ pub mod pallet {
 			// Remove Album details
 			Albums::<T>::remove(collection_id, album_id);
 
-			Self::deposit_event(Event::BurnedNFT {
-				collection_id,
-				token_id: nft_id,
-				owner: burner,
-			});
+			Self::deposit_event(Event::BurnedAlbum { collection_id, album_id, owner: burner });
 
 			Ok(().into())
 		}
