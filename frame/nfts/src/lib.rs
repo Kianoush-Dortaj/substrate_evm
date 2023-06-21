@@ -561,6 +561,20 @@ pub mod pallet {
 			Self::do_create_collection(issuer, metadata)
 		}
 
+		#[pallet::call_index(16)]
+		#[pallet::weight(0)]
+		pub fn set_expiration(origin: OriginFor<T>, blocks_to_target: T::BlockNumber) -> DispatchResult {
+			let _who = ensure_signed(origin)?;
+			let current_block_number = frame_system::Pallet::<T>::block_number();
+			let expiration_block_number = current_block_number + blocks_to_target;
+			ensure!(
+				current_block_number > expiration_block_number,
+				"Current date is not after end date."
+			);
+			// ExpirationBlockNumberStorage::<T>::put(expiration_block_number);
+			Ok(())
+		}
+
 		#[pallet::call_index(1)]
 		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn mint_nft(
