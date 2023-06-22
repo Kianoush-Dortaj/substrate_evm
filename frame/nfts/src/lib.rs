@@ -548,6 +548,9 @@ pub mod pallet {
 	#[pallet::storage]
 	pub type StorageVersion<T: Config> = StorageValue<_, Releases, ValueQuery>;
 
+	#[pallet::storage]
+    pub type BlockNumberStorage<T: Config> = StorageValue<_, T::BlockNumber>;
+
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		#[pallet::call_index(0)]
@@ -574,6 +577,7 @@ pub mod pallet {
 			// ExpirationBlockNumberStorage::<T>::put(expiration_block_number);
 			Ok(())
 		}
+		
 
 		#[pallet::call_index(1)]
 		#[pallet::weight(T::PalletWeightInfo::do_something())]

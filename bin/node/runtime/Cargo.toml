@@ -111,18 +111,13 @@ pallet-uniques = { version = "4.0.0-dev", default-features = false, path = "../.
 pallet-vesting = { version = "4.0.0-dev", default-features = false, path = "../../../frame/vesting" }
 pallet-whitelist = { version = "4.0.0-dev", default-features = false, path = "../../../frame/whitelist" }
 
-
 # Custom Pallet
 pallet-nfts = { version = "0.0.1", default-features = false, path = "../../../frame/nfts" }
-
-
-
-
+pallet-acn = { version = "4.0.0-dev", default-features = false, path = "../../../frame/acn" }
 
 # Frontier
 fp-rpc = {version="3.0.0-dev", path = "../../../evm-primitives/rpc", default-features = false }
 fp-self-contained = {version="1.0.0-dev", path = "../../../evm-primitives/self-contained", default-features = false }
-
 
 # Frontier FRAME
 pallet-base-fee = {version="1.0.0", path = "../../../evm-frame/base-fee", default-features = false }
@@ -231,6 +226,7 @@ std = [
 	"pallet-alliance/std",
 	 # cuntom 
 	 "pallet-nfts/std",
+	 "pallet-acn/std",
      #frontier
 	'fp-rpc/std',
     'fp-self-contained/std',

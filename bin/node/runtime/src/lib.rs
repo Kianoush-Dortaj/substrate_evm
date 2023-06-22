@@ -1691,6 +1691,7 @@ parameter_types! {
 	pub const NFTDeposit: Balance = 1 * CENTS;
 	pub const MetaDataByteDeposit: Balance = 10 * MILLICENTS;
 }
+
 impl pallet_nfts::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type PalletWeightInfo = pallet_nfts::weights::SubstrateWeight<Runtime>;
@@ -1730,6 +1731,11 @@ impl pallet_uniques::Config for Runtime {
 	type Helper = ();
 	type CreateOrigin = AsEnsureOriginWithArg<EnsureSigned<AccountId>>;
 	type Locker = ();
+}
+
+impl pallet_acn::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = pallet_acn::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_transaction_storage::Config for Runtime {
@@ -1902,10 +1908,11 @@ construct_runtime!(
 		RankedCollective: pallet_ranked_collective,
 		FastUnstake: pallet_fast_unstake,
 		MessageQueue: pallet_message_queue,
+		NFT:pallet_nfts,
+		ACN:pallet_acn,
 
 		//EVM
 		EVM: pallet_evm,
-		NFT:pallet_nfts,
 		Ethereum: pallet_ethereum,
 		DynamicFee: pallet_dynamic_fee,
 		BaseFee: pallet_base_fee,

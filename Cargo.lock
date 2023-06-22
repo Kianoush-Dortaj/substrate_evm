@@ -4693,6 +4693,7 @@ dependencies = [
  "frame-try-runtime",
  "log",
  "node-primitives",
+ "pallet-acn",
  "pallet-alliance",
  "pallet-asset-tx-payment",
  "pallet-assets",
@@ -5291,6 +5292,24 @@ name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
+
+[[package]]
+name = "pallet-acn"
+version = "4.0.0-dev"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-balances",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-arithmetic",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
 
 [[package]]
 name = "pallet-alliance"
