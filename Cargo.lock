@@ -5301,6 +5301,7 @@ dependencies = [
  "frame-system",
  "log",
  "pallet-balances",
+ "pallet-nfts",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",

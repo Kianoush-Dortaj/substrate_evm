@@ -1736,6 +1736,8 @@ impl pallet_uniques::Config for Runtime {
 impl pallet_acn::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type WeightInfo = pallet_acn::weights::SubstrateWeight<Runtime>;
+	type Currency = Balances;
+	type NFTsPallet = pallet_nfts::Pallet<Runtime>;
 }
 
 impl pallet_transaction_storage::Config for Runtime {

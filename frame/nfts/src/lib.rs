@@ -350,6 +350,7 @@ pub mod pallet {
 		NotNFTOwner,
 		NotAlbumOwner,
 		OwnersEmpty,
+		OwnerNotFound,
 		NotAllowToSetRoyalty,
 		ConfigNotFound,
 	}
@@ -439,6 +440,33 @@ pub mod pallet {
 			// let royalty_percentage: BalanceOf<T> = *royalty;
 			let royalty_amount = (*price * royalty_percentage) / BalanceOf::<T>::from(100u32);
 			Ok(royalty_amount)
+		}
+	
+	}
+
+	pub trait NFTHelper {
+		type AccountId;
+		type CollectionId;
+		type NFTId;
+	
+		fn has_permission_to_add_nft_in_Auction(
+			bidder: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+		) -> DispatchResult;
+	}
+
+	impl<T: Config> NFTHelper for Pallet<T> {
+		type AccountId = T::AccountId;
+		type CollectionId = T::CollectionId;
+		type NFTId = T::NFTId;
+	
+		fn has_permission_to_add_nft_in_Auction(
+			bidder: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+		) -> DispatchResult {
+			Self::has_permission_add_nft_in_auction(&bidder, &collection_id, &nft_id)
 		}
 	}
 
@@ -549,7 +577,7 @@ pub mod pallet {
 	pub type StorageVersion<T: Config> = StorageValue<_, Releases, ValueQuery>;
 
 	#[pallet::storage]
-    pub type BlockNumberStorage<T: Config> = StorageValue<_, T::BlockNumber>;
+	pub type BlockNumberStorage<T: Config> = StorageValue<_, T::BlockNumber>;
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
@@ -566,7 +594,10 @@ pub mod pallet {
 
 		#[pallet::call_index(16)]
 		#[pallet::weight(0)]
-		pub fn set_expiration(origin: OriginFor<T>, blocks_to_target: T::BlockNumber) -> DispatchResult {
+		pub fn set_expiration(
+			origin: OriginFor<T>,
+			blocks_to_target: T::BlockNumber,
+		) -> DispatchResult {
 			let _who = ensure_signed(origin)?;
 			let current_block_number = frame_system::Pallet::<T>::block_number();
 			let expiration_block_number = current_block_number + blocks_to_target;
@@ -577,7 +608,6 @@ pub mod pallet {
 			// ExpirationBlockNumberStorage::<T>::put(expiration_block_number);
 			Ok(())
 		}
-		
 
 		#[pallet::call_index(1)]
 		#[pallet::weight(T::PalletWeightInfo::do_something())]
@@ -799,6 +829,9 @@ pub mod pallet {
 			Self::do_butn_nft(burner, collection_id, nft_id)
 		}
 
+		// #[pallet::call_index(12)]
+		// #[pallet::weight(T::PalletWeightInfo::do_something())]
+
 		// #[pallet::call_index(11)]
 		// #[pallet::weight(T::PalletWeightInfo::do_something())]
 		// pub fn burn_album(
@@ -835,6 +868,29 @@ pub mod pallet {
 			<Collections<T>>::get(collection_id.clone()).ok_or(Error::<T>::CollectionNotFound)
 		}
 
+		pub(crate) fn get_nft(
+			collection_id: &T::CollectionId,
+			nft_id: &T::NFTId,
+		) -> Result<NFTDetailsOf<T>, Error<T>> {
+			<NFTs<T>>::get(collection_id, nft_id).ok_or(Error::<T>::NFTNotFound)
+		}
+
+		pub(crate) fn has_permission_add_nft_in_auction(
+			bidder: &T::AccountId,
+			collection_id: &T::CollectionId,
+			nft_id: &T::NFTId,
+		) -> DispatchResult {
+			Self::get_collection(&collection_id)?;
+
+			let find_nft = Self::get_nft(&collection_id, &nft_id)?;
+
+			if let Some(owners) = find_nft.owners {
+				Self::find_index_owner(&bidder, &owners)?;
+			}
+
+			Ok(().into())
+		}
+
 		pub(crate) fn get_config() -> Result<ConfigMarketPlaceDetailsOf, Error<T>> {
 			let config = <ConfigInfo<T>>::get();
 			Ok(config)
@@ -847,7 +903,7 @@ pub mod pallet {
 			let userId = owners
 				.iter()
 				.position(|x| x.address == *seller)
-				.ok_or(Error::<T>::NotAlbumOwner);
+				.ok_or(Error::<T>::OwnerNotFound);
 
 			userId
 		}
@@ -1000,7 +1056,7 @@ pub mod pallet {
 			// Insert the NFT instance to the NFTs storage
 			NFTs::<T>::insert(collection_id, nft_id, nft_details);
 
-			Self::user_buy_nft(&issuer, &collection_id, &nft_id);
+			Self::user_buy_nft(&issuer, &collection_id, &nft_id)?;
 
 			// Emit the MintedNFT event
 			Self::deposit_event(Event::MintedNFT {
@@ -1516,16 +1572,15 @@ pub mod pallet {
 
 			Ok(().into())
 		}
-	
+
 		fn convert_moment_to_u64_in_milliseconds(date: T::Moment) -> Result<u64, DispatchError> {
 			let date_as_u64_millis;
 			if let Some(_date_as_u64) = TryInto::<u64>::try_into(date).ok() {
 				date_as_u64_millis = _date_as_u64;
 			} else {
-				return Err(DispatchError::Other("Unable to convert Moment to i64 for date"));
+				return Err(DispatchError::Other("Unable to convert Moment to i64 for date"))
 			}
-			return Ok(date_as_u64_millis);
+			return Ok(date_as_u64_millis)
 		}
-
 	}
 }
