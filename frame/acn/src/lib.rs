@@ -246,7 +246,7 @@ pub mod pallet {
 
 			let prev_key = match Bids::<T>::get(&auction_key, &hash) {
 				Some((prev_key, prev_price)) => {
-					ensure!(prev_price <= auction.start_price, Error::<T>::AuctionAssigned);
+					ensure!(prev_price >= auction.start_price, Error::<T>::AuctionAssigned);
 					<T as pallet::Config>::Currency::unreserve(&prev_key.0, auction.start_price);
 					prev_key
 				},
