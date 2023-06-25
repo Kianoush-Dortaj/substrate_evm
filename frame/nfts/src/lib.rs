@@ -5,7 +5,7 @@
 /// <https://docs.substrate.io/reference/frame-pallets/>
 use codec::{alloc::vec, Decode, Encode, HasCompact, MaxEncodedLen};
 use frame_support::sp_runtime::{
-	traits::{AtLeast32BitUnsigned, CheckedAdd, Member, One},
+	traits::{AtLeast32BitUnsigned, CheckedAdd, CheckedSub, Member, One},
 	DispatchError, SaturatedConversion,
 };
 use sp_runtime::traits::UniqueSaturatedFrom;
@@ -17,8 +17,8 @@ use frame_support::{
 	transactional, Twox64Concat,
 };
 use frame_system::Config as SystemConfig;
-
 pub use pallet::*;
+use sp_arithmetic::traits::Zero;
 
 #[cfg(test)]
 mod mock;
@@ -330,6 +330,7 @@ pub mod pallet {
 		NFTNotFound,
 		AlbumNotFound,
 		NoAvailableAlbumId,
+		ArithmeticUnderflow,
 		/// The operator is not the owner of the NFT and has no permission
 		NoPermission,
 		/// No available Collection ID
@@ -378,6 +379,11 @@ pub mod pallet {
 			total_supply: BalanceOf<Self>,
 			percentage: u64,
 		) -> BalanceOf<Self>;
+
+		fn calc_royalty_and_fee(
+			royalty: u64,
+			price: &BalanceOf<Self>,
+		) -> Result<(BalanceOf<Self>, BalanceOf<Self>), DispatchError>;
 	}
 
 	impl<T: Config> ConfigHelper for T {
@@ -441,18 +447,46 @@ pub mod pallet {
 			let royalty_amount = (*price * royalty_percentage) / BalanceOf::<T>::from(100u32);
 			Ok(royalty_amount)
 		}
-	
+
+		#[inline(always)]
+		fn calc_royalty_and_fee(
+			royalty: u64,
+			price: &BalanceOf<T>,
+		) -> Result<(BalanceOf<T>, BalanceOf<T>), DispatchError> {
+			// Calculate royalty amount
+			let royalty_percentage: BalanceOf<T> = royalty.saturated_into::<BalanceOf<T>>();
+
+			let royalty_amount = (*price * royalty_percentage) / BalanceOf::<T>::from(100u32);
+
+			let config = <ConfigInfo<T>>::get();
+			// Calculate royalty fee
+			let fee_percentage: BalanceOf<T> = config.royalty_fee.saturated_into::<BalanceOf<T>>();
+			let fee_amount = (royalty_amount * fee_percentage) / BalanceOf::<T>::from(100u32);
+
+			Ok((royalty_amount, fee_amount))
+		}
 	}
 
 	pub trait NFTHelper {
 		type AccountId;
 		type CollectionId;
 		type NFTId;
-	
+		type Balance;
+
 		fn has_permission_to_add_nft_in_Auction(
 			bidder: &Self::AccountId,
 			collection_id: &Self::CollectionId,
 			nft_id: &Self::NFTId,
+		) -> DispatchResult;
+
+		fn sell_nft(
+			seller: &Self::AccountId,
+			buyer: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+			price_input: u64,
+			auction_start_price_input: u64,
+			total_supply_input: u64,
 		) -> DispatchResult;
 	}
 
@@ -460,13 +494,39 @@ pub mod pallet {
 		type AccountId = T::AccountId;
 		type CollectionId = T::CollectionId;
 		type NFTId = T::NFTId;
-	
+		type Balance = BalanceOf<T>;
+
 		fn has_permission_to_add_nft_in_Auction(
 			bidder: &Self::AccountId,
 			collection_id: &Self::CollectionId,
 			nft_id: &Self::NFTId,
 		) -> DispatchResult {
 			Self::has_permission_add_nft_in_auction(&bidder, &collection_id, &nft_id)
+		}
+
+		fn sell_nft(
+			seller: &Self::AccountId,
+			buyer: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+			price_input: u64,
+			auction_start_price_input: u64,
+			total_supply_input: u64,
+		) -> DispatchResult {
+			let price: BalanceOf<T> = price_input.saturated_into::<BalanceOf<T>>();
+			let auction_start_price: BalanceOf<T> =
+				auction_start_price_input.saturated_into::<BalanceOf<T>>();
+			let total_supply: BalanceOf<T> = total_supply_input.saturated_into::<BalanceOf<T>>();
+
+			Self::do_sell_nft(
+				seller.clone(),
+				buyer.clone(),
+				collection_id.clone(),
+				nft_id.clone(),
+				price,
+				auction_start_price,
+				total_supply,
+			)
 		}
 	}
 
@@ -791,10 +851,19 @@ pub mod pallet {
 			collection_id: T::CollectionId,
 			nft_id: T::NFTId,
 			price: BalanceOf<T>,
+			auction_start_price: BalanceOf<T>,
 			total_supply: BalanceOf<T>,
 		) -> DispatchResult {
 			let seller = ensure_signed(origin)?;
-			Self::do_sell_nft(seller, buyer, collection_id, nft_id, price, total_supply)
+			Self::do_sell_nft(
+				seller,
+				buyer,
+				collection_id,
+				nft_id,
+				price,
+				auction_start_price,
+				total_supply,
+			)
 		}
 
 		#[pallet::call_index(10)]
@@ -1265,6 +1334,7 @@ pub mod pallet {
 			collection_id: T::CollectionId,
 			nft_id: T::NFTId,
 			price: BalanceOf<T>,
+			auction_start_price: BalanceOf<T>,
 			total_supply: BalanceOf<T>,
 		) -> DispatchResult {
 			// Retrieve the Album.
@@ -1274,17 +1344,28 @@ pub mod pallet {
 				|nft_option| -> Result<_, DispatchError> {
 					let mut nft = nft_option.as_mut().ok_or(Error::<T>::NFTNotFound)?;
 
+					// Unreserve deposits of bidder and owner
+					<T as pallet::Config>::Currency::unreserve(&buyer, price);
+					<T as pallet::Config>::Currency::unreserve(&seller, auction_start_price);
+
 					// Calculate the royalty.
-					let royalty_amount = T::calc_royalty(nft.royalty, &price)?;
+					let royalty_amount = T::calc_royalty_and_fee(nft.royalty, &price)?;
 
 					// The remaining amount after subtracting the royalty.
-					let remaining_amount = price.clone() - royalty_amount;
+					let remaining_amount = price.clone() - (royalty_amount.0 + royalty_amount.1);
 
 					// Transfer the royalty to the creator.
 					T::Currency::transfer(
 						&buyer,
 						&nft.issuer,
-						royalty_amount,
+						royalty_amount.0,
+						ExistenceRequirement::KeepAlive,
+					)?;
+
+					T::Currency::transfer(
+						&buyer,
+						&nft.issuer,
+						royalty_amount.1,
 						ExistenceRequirement::KeepAlive,
 					)?;
 
@@ -1298,12 +1379,19 @@ pub mod pallet {
 
 					let mut index: usize = 0;
 					// Ensure the seller is an owner of this Album.
-					match &nft.owners {
-						Some(ref owners) => {
-							let mut owners = owners.clone();
-							index = Self::find_index_owner(&buyer, &owners)?;
-							// Remove the seller from the owners.
-							owners.remove(index);
+					match &mut nft.owners {
+						Some(ref mut owners) => {
+							index = Self::find_index_owner(&seller, owners)?;
+							// If total supply reduces to zero, remove the owner.
+							if let Some(owner_supply) = owners[index].total_supply.as_mut() {
+								*owner_supply = owner_supply
+									.checked_sub(&total_supply)
+									.ok_or(Error::<T>::ArithmeticUnderflow)?;
+								if *owner_supply == Zero::zero() {
+									owners.remove(index);
+									Self::retain_nft_owners(&seller, &collection_id, &nft_id)?;
+								}
+							}
 
 							// Add the buyer to the owners.
 							owners.push(Owners {
@@ -1316,7 +1404,6 @@ pub mod pallet {
 					}?;
 
 					Self::user_buy_nft(&buyer, &collection_id, &nft_id)?;
-					Self::retain_nft_owners(&seller, &collection_id, &nft_id)?;
 
 					Self::deposit_event(Event::NFTSold {
 						collection_id,

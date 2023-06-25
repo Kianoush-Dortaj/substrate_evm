@@ -20,6 +20,8 @@ use frame_support::{
 	sp_runtime::traits::{AtLeast32BitUnsigned, Hash, Member},
 	traits::{Currency, ExistenceRequirement, ReservableCurrency},
 };
+use sp_runtime::SaturatedConversion;
+use sp_arithmetic::traits::Zero;
 use frame_system::Config as SystemConfig;
 use pallet_nfts::NFTHelper;
 use sp_runtime::{
@@ -126,7 +128,7 @@ pub mod pallet {
 			auction_key: Key<T>,
 			bid_key: Key<T>,
 			price: BalanceOf<T>,
-			hash:HashId<T>,
+			hash: HashId<T>,
 		},
 		Confirmed {
 			auction_key: Key<T>,
@@ -260,7 +262,7 @@ pub mod pallet {
 			<T as pallet::Config>::Currency::reserve(&bidder, auction.start_price)?;
 			Bids::<T>::insert(&auction_key, &hash, (prev_key.clone(), price));
 
-			Self::deposit_event(Event::<T>::Bid { auction_key,hash:hash, bid_key: prev_key, price });
+			Self::deposit_event(Event::<T>::Bid { auction_key, hash, bid_key: prev_key, price });
 			Ok(())
 		}
 
@@ -269,35 +271,30 @@ pub mod pallet {
 		pub fn confirm(
 			origin: OriginFor<T>,
 			auction_key: Key<T>,
-			hash_id: Option<HashId<T>>,
+			hash: HashId<T>,
 		) -> DispatchResult {
 			let owner = ensure_signed(origin)?;
 			let auction =
 				NFTAuctions::<T>::get(&auction_key).ok_or(Error::<T>::AuctionKeyNotFound)?;
 			ensure!(owner == auction_key.0, Error::<T>::OwnerRequired);
 
-			// Generate a hash if the hash_id parameter is None
-			let hash = match &hash_id {
-				Some(hash) => hash.clone(),
-				None => T::Hashing::hash_of(&auction_key),
-			};
-
 			let ((bidder, _), price) =
 				Bids::<T>::get(&auction_key, &hash).ok_or(Error::<T>::AuctionNotAssigned)?;
 			ensure!(price >= auction.start_price, Error::<T>::AuctionNotAssigned);
+			
+			let price_calc: u64 = auction.start_price.saturated_into::<u64>();
+			let start_price: u64 = auction.start_price.saturated_into::<u64>();
 
-			// Unreserve deposits of bidder and owner
-			<T as pallet::Config>::Currency::unreserve(&bidder, auction.start_price);
-			<T as pallet::Config>::Currency::unreserve(&owner, auction.start_price);
 
-			// Owner pays bidder the agreed price
-			<T as pallet::Config>::Currency::transfer(
-				&owner,
+			T::NFTsPallet::sell_nft(
 				&bidder,
-				price,
-				ExistenceRequirement::AllowDeath,
-			)
-			.unwrap();
+				&owner,
+				&auction.collection_id,
+				&auction.nft_id,
+				price_calc.clone(),
+				start_price.clone(),
+				auction.total_supply,
+			)?;
 
 			// Delete auction from storage
 			Bids::<T>::remove_prefix(&auction_key, None);
