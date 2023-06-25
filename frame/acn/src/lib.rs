@@ -246,7 +246,7 @@ pub mod pallet {
 
 			let prev_key = match Bids::<T>::get(&auction_key, &hash) {
 				Some((prev_key, prev_price)) => {
-					ensure!(prev_price >= auction.start_price, Error::<T>::AuctionAssigned);
+					ensure!(price > prev_price, Error::<T>::AuctionAssigned);
 					<T as pallet::Config>::Currency::unreserve(&prev_key.0, auction.start_price);
 					prev_key
 				},
@@ -284,7 +284,7 @@ pub mod pallet {
 
 			let ((bidder, _), price) =
 				Bids::<T>::get(&auction_key, &hash).ok_or(Error::<T>::AuctionNotAssigned)?;
-			ensure!(price <= auction.start_price, Error::<T>::AuctionNotAssigned);
+			ensure!(price >= auction.start_price, Error::<T>::AuctionNotAssigned);
 
 			// Unreserve deposits of bidder and owner
 			<T as pallet::Config>::Currency::unreserve(&bidder, auction.start_price);
