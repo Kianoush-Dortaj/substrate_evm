@@ -126,6 +126,7 @@ pub mod pallet {
 			auction_key: Key<T>,
 			bid_key: Key<T>,
 			price: BalanceOf<T>,
+			hash:HashId<T>,
 		},
 		Confirmed {
 			auction_key: Key<T>,
@@ -259,7 +260,7 @@ pub mod pallet {
 			<T as pallet::Config>::Currency::reserve(&bidder, auction.start_price)?;
 			Bids::<T>::insert(&auction_key, &hash, (prev_key.clone(), price));
 
-			Self::deposit_event(Event::<T>::Bid { auction_key, bid_key: prev_key, price });
+			Self::deposit_event(Event::<T>::Bid { auction_key,hash:hash, bid_key: prev_key, price });
 			Ok(())
 		}
 
