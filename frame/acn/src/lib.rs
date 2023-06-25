@@ -287,8 +287,8 @@ pub mod pallet {
 
 
 			T::NFTsPallet::sell_nft(
-				&bidder,
 				&owner,
+				&bidder,
 				&auction.collection_id,
 				&auction.nft_id,
 				price_calc.clone(),
