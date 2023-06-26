@@ -288,6 +288,7 @@ pub mod pallet {
 			auction.highest_bidder = bidder.clone();
 
 			Bids::<T>::insert(&auction_key, &hash, (prev_key.clone(), price));
+			NFTAuctions::<T>::insert(&auction_key, auction);
 
 			Self::deposit_event(Event::<T>::Bid { auction_key, hash, bid_key: prev_key, price });
 			Ok(())
