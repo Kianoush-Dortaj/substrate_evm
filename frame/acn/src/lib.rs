@@ -173,7 +173,7 @@ pub mod pallet {
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
-			T::NFTsPallet::has_permission_to_add_nft_in_Auction(&issuer, &collection_id, &nft_id)?;
+			T::NFTsPallet::has_permission_to_add_nft_in_Auction(&issuer, &collection_id, &nft_id,total_supply)?;
 
 			let auction = NFTAuction {
 				collection_id,

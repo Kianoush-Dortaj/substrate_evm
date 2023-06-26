@@ -5,7 +5,7 @@
 /// <https://docs.substrate.io/reference/frame-pallets/>
 use codec::{alloc::vec, Decode, Encode, HasCompact, MaxEncodedLen};
 use frame_support::sp_runtime::{
-	traits::{AtLeast32BitUnsigned, CheckedAdd, CheckedSub, Member, One},
+	traits::{AtLeast32BitUnsigned, CheckedAdd, Member, One},
 	DispatchError, SaturatedConversion,
 };
 use sp_runtime::traits::UniqueSaturatedFrom;
@@ -18,7 +18,6 @@ use frame_support::{
 };
 use frame_system::Config as SystemConfig;
 pub use pallet::*;
-use sp_arithmetic::traits::Zero;
 
 #[cfg(test)]
 mod mock;
@@ -98,10 +97,10 @@ pub mod pallet {
 	}
 
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-	#[scale_info(skip_type_params(AccountId, Balance))]
-	pub struct Owners<AccountId, Balance> {
+	#[scale_info(skip_type_params(AccountId))]
+	pub struct Owners<AccountId> {
 		/// Token metadata
-		pub total_supply: Option<Balance>, // change this according to your needs
+		pub total_supply: u64, // change this according to your needs
 		/// Token owner
 		pub address: AccountId,
 	}
@@ -114,7 +113,7 @@ pub mod pallet {
 		/// NFT Issuer
 		pub issuer: AccountId,
 		/// Token owner
-		pub owners: Option<Vec<Owners<AccountId, Balance>>>,
+		pub owners: Option<Vec<Owners<AccountId>>>,
 		///  Share Profits
 		pub share_profits: Vec<ShareProfitsInfo<AccountId>>,
 		pub price: Balance,
@@ -129,7 +128,7 @@ pub mod pallet {
 		/// Token metadata
 		pub metadata: BoundedVec<u8, ConstU32<32>>,
 		/// Token owner
-		pub owners: Option<Vec<Owners<AccountId, Balance>>>,
+		pub owners: Option<Vec<Owners<AccountId>>>,
 		///  Share Profits
 		pub share_profits: Vec<ShareProfitsInfo<AccountId>>,
 		pub price: Balance,
@@ -143,7 +142,7 @@ pub mod pallet {
 		/// NFT Issuer
 		pub issuer: AccountId,
 		/// Token owner
-		pub owners: Option<Vec<Owners<AccountId, Balance>>>,
+		pub owners: Option<Vec<Owners<AccountId>>>,
 		pub tracks: Vec<AlbumTracks<AccountId, Balance, AlbumId>>,
 		pub royalty: u64,
 		pub end_date: u64,
@@ -352,15 +351,13 @@ pub mod pallet {
 		NotAlbumOwner,
 		OwnersEmpty,
 		OwnerNotFound,
+		OwnerNotHaveEnoughTotalSupply,
 		NotAllowToSetRoyalty,
 		ConfigNotFound,
 	}
 
 	pub trait ConfigHelper: Config {
-		fn calc_total_price(
-			price: BalanceOf<Self>,
-			total_supply: BalanceOf<Self>,
-		) -> BalanceOf<Self>;
+		fn calc_total_price(price: BalanceOf<Self>, total_supply: u64) -> BalanceOf<Self>;
 
 		fn generate_nft_id(collection_id: Self::CollectionId)
 			-> Result<Self::NFTId, DispatchError>;
@@ -376,7 +373,7 @@ pub mod pallet {
 
 		fn calc_transfer_amount_with_percentage(
 			price: BalanceOf<Self>,
-			total_supply: BalanceOf<Self>,
+			total_supply: u64,
 			percentage: u64,
 		) -> BalanceOf<Self>;
 
@@ -388,25 +385,28 @@ pub mod pallet {
 
 	impl<T: Config> ConfigHelper for T {
 		#[inline(always)]
-		fn calc_total_price(price: BalanceOf<T>, total_supply: BalanceOf<T>) -> BalanceOf<T> {
-			let total_price = price.clone() * total_supply.clone();
-			total_price
+		fn calc_total_price(price: BalanceOf<T>, total_supply: u64) -> BalanceOf<T> {
+			let price_as_u64: u64 = TryInto::<u64>::try_into(price)
+				.ok()
+				.expect("Balance should be convertible to u64; qed");
+
+			let total_price = price_as_u64 * total_supply.clone();
+			let amount_to_transfer: BalanceOf<T> =
+				UniqueSaturatedFrom::unique_saturated_from(total_price);
+			amount_to_transfer
 		}
 
 		fn calc_transfer_amount_with_percentage(
 			price: BalanceOf<T>,
-			total_supply: BalanceOf<T>,
+			total_supply: u64,
 			percentage: u64,
 		) -> BalanceOf<T> {
 			let price_as_u64: u64 = TryInto::<u64>::try_into(price)
 				.ok()
 				.expect("Balance should be convertible to u64; qed");
 
-			let total_supply_as_u64: u64 = TryInto::<u64>::try_into(total_supply)
-				.ok()
-				.expect("Balance should be convertible to u64; qed");
+			let amount_to_transfer_as_u64 = price_as_u64 * total_supply * percentage / 100;
 
-			let amount_to_transfer_as_u64 = price_as_u64 * total_supply_as_u64 * percentage / 100;
 			let amount_to_transfer: BalanceOf<T> =
 				UniqueSaturatedFrom::unique_saturated_from(amount_to_transfer_as_u64);
 			amount_to_transfer
@@ -477,6 +477,7 @@ pub mod pallet {
 			bidder: &Self::AccountId,
 			collection_id: &Self::CollectionId,
 			nft_id: &Self::NFTId,
+			total_supply: u64,
 		) -> DispatchResult;
 
 		fn sell_nft(
@@ -500,8 +501,9 @@ pub mod pallet {
 			bidder: &Self::AccountId,
 			collection_id: &Self::CollectionId,
 			nft_id: &Self::NFTId,
+			total_supply: u64,
 		) -> DispatchResult {
-			Self::has_permission_add_nft_in_auction(&bidder, &collection_id, &nft_id)
+			Self::has_permission_add_nft_in_auction(&bidder, &collection_id, &nft_id, total_supply)
 		}
 
 		fn sell_nft(
@@ -511,12 +513,12 @@ pub mod pallet {
 			nft_id: &Self::NFTId,
 			price_input: u64,
 			auction_start_price_input: u64,
-			total_supply_input: u64,
+			total_supply: u64,
 		) -> DispatchResult {
 			let price: BalanceOf<T> = price_input.saturated_into::<BalanceOf<T>>();
+
 			let auction_start_price: BalanceOf<T> =
 				auction_start_price_input.saturated_into::<BalanceOf<T>>();
-			let total_supply: BalanceOf<T> = total_supply_input.saturated_into::<BalanceOf<T>>();
 
 			Self::do_sell_nft(
 				seller.clone(),
@@ -783,7 +785,7 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
 			album_id: T::AlbumId,
-			total_supply: BalanceOf<T>,
+			total_supply: u64,
 		) -> DispatchResult {
 			let buyer = ensure_signed(origin)?;
 
@@ -798,7 +800,7 @@ pub mod pallet {
 			collection_id: T::CollectionId,
 			album_id: T::AlbumId,
 			price: BalanceOf<T>,
-			total_supply: BalanceOf<T>,
+			total_supply: u64,
 		) -> DispatchResult {
 			let seller = ensure_signed(origin)?;
 
@@ -823,7 +825,7 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
 			nft_id: T::NFTId,
-			total_supply: BalanceOf<T>,
+			total_supply: u64,
 		) -> DispatchResult {
 			let buyer = ensure_signed(origin)?;
 
@@ -852,7 +854,7 @@ pub mod pallet {
 			nft_id: T::NFTId,
 			price: BalanceOf<T>,
 			auction_start_price: BalanceOf<T>,
-			total_supply: BalanceOf<T>,
+			total_supply: u64,
 		) -> DispatchResult {
 			let seller = ensure_signed(origin)?;
 			Self::do_sell_nft(
@@ -948,13 +950,14 @@ pub mod pallet {
 			bidder: &T::AccountId,
 			collection_id: &T::CollectionId,
 			nft_id: &T::NFTId,
+			total_supply: u64,
 		) -> DispatchResult {
 			Self::get_collection(&collection_id)?;
 
 			let find_nft = Self::get_nft(&collection_id, &nft_id)?;
 
 			if let Some(owners) = find_nft.owners {
-				Self::find_index_owner(&bidder, &owners)?;
+				Self::check_owner_hash_enogh_total_suppply(&bidder, &owners, total_supply)?;
 			}
 
 			Ok(().into())
@@ -967,12 +970,25 @@ pub mod pallet {
 
 		pub(crate) fn find_index_owner(
 			seller: &T::AccountId,
-			owners: &Vec<Owners<T::AccountId, BalanceOf<T>>>,
+			owners: &Vec<Owners<T::AccountId>>,
 		) -> Result<usize, Error<T>> {
 			let userId = owners
 				.iter()
 				.position(|x| x.address == *seller)
 				.ok_or(Error::<T>::OwnerNotFound);
+
+			userId
+		}
+
+		pub(crate) fn check_owner_hash_enogh_total_suppply(
+			seller: &T::AccountId,
+			owners: &Vec<Owners<T::AccountId>>,
+			total_supply: u64,
+		) -> Result<usize, Error<T>> {
+			let userId = owners
+				.iter()
+				.position(|x| x.address == *seller && x.total_supply >= total_supply)
+				.ok_or(Error::<T>::OwnerNotHaveEnoughTotalSupply);
 
 			userId
 		}
@@ -1142,7 +1158,7 @@ pub mod pallet {
 			buyer: T::AccountId,
 			collection_id: T::CollectionId,
 			nft_id: T::NFTId,
-			total_supply: BalanceOf<T>,
+			total_supply: u64,
 		) -> DispatchResult {
 			let nft = NFTs::<T>::try_mutate_exists(
 				collection_id,
@@ -1158,13 +1174,13 @@ pub mod pallet {
 						&buyer,
 						&nft.share_profits,
 						&nft.price,
-						&total_supply,
+						total_supply,
 					)?;
 
 					// Update the NFT.
-					let ownres = Owners::<T::AccountId, BalanceOf<T>> {
+					let ownres = Owners::<T::AccountId> {
 						address: buyer.clone(),
-						total_supply: Some(total_supply.clone()),
+						total_supply: total_supply.clone(),
 					};
 
 					if let Some(owners_vec) = &mut nft.owners {
@@ -1196,7 +1212,7 @@ pub mod pallet {
 			buyer: T::AccountId,
 			collection_id: T::CollectionId,
 			album_id: T::AlbumId,
-			total_supply: BalanceOf<T>,
+			total_supply: u64,
 		) -> DispatchResult {
 			// Retrieve the Album.
 			Albums::<T>::try_mutate_exists(
@@ -1223,12 +1239,12 @@ pub mod pallet {
 						T::Currency::reserve(&buyer, total_price.clone())
 							.map_err(|_| Error::<T>::CanNotReserveCurrency)?;
 
-						Self::do_transfer_album_share_profit(&buyer, &track, &total_supply)?;
+						Self::do_transfer_album_share_profit(&buyer, &track, total_supply)?;
 					}
 
-					let ownres = Owners::<T::AccountId, BalanceOf<T>> {
+					let ownres = Owners::<T::AccountId> {
 						address: buyer.clone(),
-						total_supply: Some(total_supply.clone()),
+						total_supply: total_supply.clone(),
 					};
 
 					if let Some(owners_vec) = &mut album.owners {
@@ -1260,7 +1276,7 @@ pub mod pallet {
 			collection_id: T::CollectionId,
 			album_id: T::AlbumId,
 			price: BalanceOf<T>,
-			total_supply: BalanceOf<T>,
+			total_supply: u64,
 		) -> DispatchResult {
 			// Retrieve the Album.
 			Albums::<T>::try_mutate_exists(
@@ -1303,7 +1319,7 @@ pub mod pallet {
 							// Add the buyer to the owners.
 							owners.push(Owners {
 								address: buyer.clone(),
-								total_supply: Some(total_supply.clone()),
+								total_supply: total_supply.clone(),
 							});
 							Ok(())
 						},
@@ -1335,7 +1351,7 @@ pub mod pallet {
 			nft_id: T::NFTId,
 			price: BalanceOf<T>,
 			auction_start_price: BalanceOf<T>,
-			total_supply: BalanceOf<T>,
+			total_supply: u64,
 		) -> DispatchResult {
 			// Retrieve the Album.
 			NFTs::<T>::try_mutate_exists(
@@ -1383,20 +1399,22 @@ pub mod pallet {
 						Some(ref mut owners) => {
 							index = Self::find_index_owner(&seller, owners)?;
 							// If total supply reduces to zero, remove the owner.
-							if let Some(owner_supply) = owners[index].total_supply.as_mut() {
-								*owner_supply = owner_supply
-									.checked_sub(&total_supply)
-									.ok_or(Error::<T>::ArithmeticUnderflow)?;
-								if *owner_supply == Zero::zero() {
-									owners.remove(index);
-									Self::retain_nft_owners(&seller, &collection_id, &nft_id)?;
-								}
+							// NOTE: total_supply is u64 type, so no as_mut() is needed.
+							owners[index].total_supply = owners[index]
+								.total_supply
+								.checked_sub(total_supply)
+								.ok_or(Error::<T>::ArithmeticUnderflow)?;
+
+							// NOTE: total_supply is u64 type, so compare with 0, not 0.0.
+							if owners[index].total_supply == 0 {
+								owners.remove(index);
+								Self::retain_nft_owners(&seller, &collection_id, &nft_id)?;
 							}
 
 							// Add the buyer to the owners.
 							owners.push(Owners {
 								address: buyer.clone(),
-								total_supply: Some(total_supply.clone()),
+								total_supply: total_supply.clone(),
 							});
 							Ok(())
 						},
@@ -1504,7 +1522,7 @@ pub mod pallet {
 		fn do_transfer_album_share_profit(
 			buyer: &T::AccountId,
 			track: &AlbumTracks<T::AccountId, BalanceOf<T>, T::AlbumId>,
-			total_supply: &BalanceOf<T>,
+			total_supply: u64,
 		) -> Result<(), DispatchError> {
 			for info in &track.share_profits {
 				let amount_to_transfer = T::calc_transfer_amount_with_percentage(
@@ -1528,7 +1546,7 @@ pub mod pallet {
 			buyer: &T::AccountId,
 			share_profit_address: &Vec<ShareProfitsInfo<T::AccountId>>,
 			price: &BalanceOf<T>,
-			total_supply: &BalanceOf<T>,
+			total_supply: u64,
 		) -> Result<(), DispatchError> {
 			for info in share_profit_address {
 				let amount_to_transfer = T::calc_transfer_amount_with_percentage(
