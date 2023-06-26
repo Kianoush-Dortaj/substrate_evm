@@ -20,13 +20,12 @@ use frame_support::{
 	sp_runtime::traits::{AtLeast32BitUnsigned, Hash, Member},
 	traits::{Currency, ExistenceRequirement, ReservableCurrency},
 };
-use sp_runtime::SaturatedConversion;
-use sp_arithmetic::traits::Zero;
 use frame_system::Config as SystemConfig;
 use pallet_nfts::NFTHelper;
+use sp_arithmetic::traits::Zero;
 use sp_runtime::{
 	traits::{CheckedAdd, One, Saturating, StaticLookup},
-	DispatchError, Perbill, RuntimeDebug,
+	DispatchError, Perbill, RuntimeDebug, SaturatedConversion,
 };
 pub use weights::*;
 
@@ -48,7 +47,7 @@ pub mod pallet {
 		pub highest_bid: Balance,
 		pub total_supply: u64,
 		pub highest_bidder: AccountId,
-		pub min_price: Balance,
+		pub deposit: Balance,
 	}
 
 	pub type BalanceOf<T> =
@@ -122,7 +121,7 @@ pub mod pallet {
 		},
 		AuctionCreated {
 			auction_key: Key<T>,
-			bounty: BalanceOf<T>,
+			start_price: BalanceOf<T>,
 		},
 		Bid {
 			auction_key: Key<T>,
@@ -154,6 +153,8 @@ pub mod pallet {
 		OriginProhibited,
 		AuctionNotAssigned,
 		TopBidRequired,
+		InsufficientBalance,
+		PriceTooLow,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -169,11 +170,16 @@ pub mod pallet {
 			nft_id: T::NFTId,
 			start_price: BalanceOf<T>,
 			total_supply: u64,
-			min_price: BalanceOf<T>,
+			deposit: BalanceOf<T>,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
-			T::NFTsPallet::has_permission_to_add_nft_in_Auction(&issuer, &collection_id, &nft_id,total_supply)?;
+			T::NFTsPallet::has_permission_to_add_nft_in_Auction(
+				&issuer,
+				&collection_id,
+				&nft_id,
+				total_supply,
+			)?;
 
 			let auction = NFTAuction {
 				collection_id,
@@ -183,7 +189,7 @@ pub mod pallet {
 				highest_bid: start_price,
 				highest_bidder: issuer.clone(),
 				total_supply,
-				min_price,
+				deposit,
 			};
 
 			let nonce = frame_system::Pallet::<T>::account_nonce(&issuer);
@@ -191,7 +197,7 @@ pub mod pallet {
 
 			NFTAuctions::<T>::insert(&auction_key, auction);
 
-			Self::deposit_event(Event::<T>::AuctionCreated { auction_key, bounty: start_price });
+			Self::deposit_event(Event::<T>::AuctionCreated { auction_key, start_price });
 
 			Ok(())
 		}
@@ -236,9 +242,19 @@ pub mod pallet {
 			hash_id: Option<HashId<T>>,
 		) -> DispatchResult {
 			let bidder = ensure_signed(origin.clone())?;
-			let auction =
+
+			ensure!(
+				<T as pallet::Config>::Currency::free_balance(&bidder) >= price,
+				Error::<T>::InsufficientBalance
+			);
+
+			let mut auction =
 				NFTAuctions::<T>::get(&auction_key).ok_or(Error::<T>::AuctionKeyNotFound)?;
+
 			ensure!(bidder != auction_key.0, Error::<T>::OriginProhibited);
+
+			// The bid price must be higher than the current highest bid.
+			ensure!(price > auction.highest_bid, Error::<T>::PriceTooLow);
 
 			// Generate a hash if the hash_id parameter is None
 			let hash = match &hash_id {
@@ -249,7 +265,7 @@ pub mod pallet {
 			let prev_key = match Bids::<T>::get(&auction_key, &hash) {
 				Some((prev_key, prev_price)) => {
 					ensure!(price > prev_price, Error::<T>::AuctionAssigned);
-					<T as pallet::Config>::Currency::unreserve(&prev_key.0, auction.start_price);
+					<T as pallet::Config>::Currency::unreserve(&prev_key.0, prev_price);
 					prev_key
 				},
 				None => {
@@ -259,7 +275,18 @@ pub mod pallet {
 				},
 			};
 
-			<T as pallet::Config>::Currency::reserve(&bidder, auction.start_price)?;
+			if auction.highest_bid > Zero::zero() {
+				<T as pallet::Config>::Currency::unreserve(
+					&auction.highest_bidder,
+					auction.highest_bid,
+				);
+			}
+
+			<T as pallet::Config>::Currency::reserve(&bidder, price)?;
+
+			auction.highest_bid = price;
+			auction.highest_bidder = bidder.clone();
+
 			Bids::<T>::insert(&auction_key, &hash, (prev_key.clone(), price));
 
 			Self::deposit_event(Event::<T>::Bid { auction_key, hash, bid_key: prev_key, price });
@@ -274,17 +301,19 @@ pub mod pallet {
 			hash: HashId<T>,
 		) -> DispatchResult {
 			let owner = ensure_signed(origin)?;
+
 			let auction =
 				NFTAuctions::<T>::get(&auction_key).ok_or(Error::<T>::AuctionKeyNotFound)?;
+
 			ensure!(owner == auction_key.0, Error::<T>::OwnerRequired);
 
 			let ((bidder, _), price) =
 				Bids::<T>::get(&auction_key, &hash).ok_or(Error::<T>::AuctionNotAssigned)?;
-			ensure!(price >= auction.start_price, Error::<T>::AuctionNotAssigned);
-			
-			let price_calc: u64 = auction.start_price.saturated_into::<u64>();
-			let start_price: u64 = auction.start_price.saturated_into::<u64>();
 
+			ensure!(price >= auction.start_price, Error::<T>::AuctionNotAssigned);
+
+			let price_calc: u64 = price.saturated_into::<u64>();
+			let start_price: u64 = auction.start_price.saturated_into::<u64>();
 
 			T::NFTsPallet::sell_nft(
 				&owner,
@@ -307,17 +336,23 @@ pub mod pallet {
 
 		// #[pallet::call_index(4)]
 		// #[pallet::weight(<T as pallet::Config>::WeightInfo::do_something())]
-		// pub fn retract(origin: OriginFor<T>, auction_key: Key<T>) -> DispatchResult {
+		// pub fn retract(origin: OriginFor<T>, auction_key: Key<T> , hash_id:HashId<T>) ->
+		// DispatchResult {
+
 		// 	let bidder = ensure_signed(origin)?;
 		// 	// fetch auction and previous bid
 		// 	let mut auction =
 		// 		NFTAuctions::<T>::get(&auction_key).ok_or(Error::<T>::AuctionKeyNotFound)?;
-		// 	let (mut top_key, top_price) = Bids::<T>::get(&auction_key, Key::<T>::default())
+
+		// 	let (mut top_key, top_price) = Bids::<T>::get(&auction_key, hash_id)
 		// 		.ok_or(Error::<T>::TopBidRequired)?;
+
 		// 	// only the top bid can be retracted
 		// 	ensure!(bidder == top_key.0, Error::<T>::TopBidRequired);
 		// 	// bidder loses deposit to owner if auction is assigned
+
 		// 	<T as pallet::Config>::Currency::unreserve(&bidder, auction.start_price);
+
 		// 	if auction.is_assigned(top_price) {
 		// 		<T as pallet::Config>::Currency::transfer(
 		// 			&bidder,
@@ -332,9 +367,9 @@ pub mod pallet {
 		// 		// remove top bid
 		// 		let (prev_key, _) = Bids::<T>::take(&auction_key, &top_key).unwrap();
 		// 		// if there is no previous bid, reset bid vector
-		// 		if prev_key == Key::<T>::default() {
+		// 		if prev_key == hash_id {
 		// 			Bids::<T>::remove_prefix(&auction_key, None);
-		// 			break (prev_key, auction.bounty)
+		// 			break (prev_key, auction.start_price)
 		// 		}
 		// 		// use previous bid as top bid if funds can be reserved
 		// 		else if <T as pallet::Config>::Currency::reserve(&prev_key.0, auction.start_price)
@@ -343,7 +378,7 @@ pub mod pallet {
 		// 			let (_, prev_price) = Bids::<T>::get(&auction_key, &prev_key).unwrap();
 		// 			Bids::<T>::insert(
 		// 				&auction_key,
-		// 				Key::<T>::default(),
+		// 				hash_id,
 		// 				(prev_key.clone(), prev_price),
 		// 			);
 		// 			break (prev_key, prev_price)
