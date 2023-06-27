@@ -4,7 +4,7 @@
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/reference/frame-pallets/>
 pub use pallet::*;
-
+use sp_std::vec::Vec;
 #[cfg(test)]
 mod mock;
 
@@ -335,60 +335,55 @@ pub mod pallet {
 			Ok(())
 		}
 
-		// #[pallet::call_index(4)]
-		// #[pallet::weight(<T as pallet::Config>::WeightInfo::do_something())]
-		// pub fn retract(origin: OriginFor<T>, auction_key: Key<T> , hash_id:HashId<T>) ->
-		// DispatchResult {
+		#[pallet::call_index(4)]
+		#[pallet::weight(<T as pallet::Config>::WeightInfo::do_something())]
+		pub fn retract(
+			origin: OriginFor<T>,
+			auction_key: Key<T>,
+			hash_id: HashId<T>,
+		) -> DispatchResult {
+			let bidder = ensure_signed(origin)?;
+			// fetch auction and previous bid
+			let mut auction =
+				NFTAuctions::<T>::get(&auction_key).ok_or(Error::<T>::AuctionKeyNotFound)?;
 
-		// 	let bidder = ensure_signed(origin)?;
-		// 	// fetch auction and previous bid
-		// 	let mut auction =
-		// 		NFTAuctions::<T>::get(&auction_key).ok_or(Error::<T>::AuctionKeyNotFound)?;
+			let (top_key, top_price) =
+				Bids::<T>::get(&auction_key, hash_id).ok_or(Error::<T>::TopBidRequired)?;
 
-		// 	let (mut top_key, top_price) = Bids::<T>::get(&auction_key, hash_id)
-		// 		.ok_or(Error::<T>::TopBidRequired)?;
+			// only the top bid can be retracted
+			ensure!(bidder == top_key.0, Error::<T>::TopBidRequired);
 
-		// 	// only the top bid can be retracted
-		// 	ensure!(bidder == top_key.0, Error::<T>::TopBidRequired);
-		// 	// bidder loses deposit to owner if auction is assigned
+			// bidder unreserves the bid amount
+			<T as pallet::Config>::Currency::unreserve(&bidder, top_price);
 
-		// 	<T as pallet::Config>::Currency::unreserve(&bidder, auction.start_price);
+			// Remove the top bid
+			Bids::<T>::remove(&auction_key, &hash_id);
 
-		// 	if auction.is_assigned(top_price) {
-		// 		<T as pallet::Config>::Currency::transfer(
-		// 			&bidder,
-		// 			&auction_key.0,
-		// 			auction.start_price,
-		// 			ExistenceRequirement::AllowDeath,
-		// 		)
-		// 		.unwrap();
-		// 	}
+			// Retrieve the previous highest bid
+			let bid_history = Bids::<T>::iter_prefix_values(&auction_key).collect::<Vec<_>>();
+			let prev_bid = bid_history.iter().max_by(|x, y| x.1.cmp(&y.1));
 
-		// 	let (bid_key, price) = loop {
-		// 		// remove top bid
-		// 		let (prev_key, _) = Bids::<T>::take(&auction_key, &top_key).unwrap();
-		// 		// if there is no previous bid, reset bid vector
-		// 		if prev_key == hash_id {
-		// 			Bids::<T>::remove_prefix(&auction_key, None);
-		// 			break (prev_key, auction.start_price)
-		// 		}
-		// 		// use previous bid as top bid if funds can be reserved
-		// 		else if <T as pallet::Config>::Currency::reserve(&prev_key.0, auction.start_price)
-		// 			.is_ok()
-		// 		{
-		// 			let (_, prev_price) = Bids::<T>::get(&auction_key, &prev_key).unwrap();
-		// 			Bids::<T>::insert(
-		// 				&auction_key,
-		// 				hash_id,
-		// 				(prev_key.clone(), prev_price),
-		// 			);
-		// 			break (prev_key, prev_price)
-		// 		}
-		// 		// otherwise continue down the stack
-		// 		top_key = prev_key;
-		// 	};
-		// 	Self::deposit_event(Event::<T>::Retracted { auction_key, bid_key, price });
-		// 	Ok(())
-		// }
+			// if there is a previous bid, set it to be the new highest bid
+			match prev_bid {
+				Some((prev_bidder, prev_price)) => {
+					auction.highest_bid = *prev_price;
+					auction.highest_bidder = prev_bidder.0.clone();
+					Bids::<T>::insert(&auction_key, hash_id, (prev_bidder.clone(), *prev_price));
+				},
+				None => {
+					// if no previous bids exist, just remove the bid for this auction
+					auction.highest_bid = auction.start_price;
+					auction.highest_bidder = auction.issuer.clone(); // Reset highest_bidder
+				},
+			}
+			NFTAuctions::<T>::insert(&auction_key, auction);
+
+			Self::deposit_event(Event::<T>::Retracted {
+				auction_key,
+				bid_key: top_key,
+				price: top_price,
+			});
+			Ok(())
+		}
 	}
 }
