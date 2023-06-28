@@ -44,7 +44,7 @@ pub mod pallet {
 	pub type NFTDetailsOf<T> = NFT<<T as SystemConfig>::AccountId, BalanceOf<T>>;
 
 	pub type AlbumDetailsOf<T> =
-		Album<<T as SystemConfig>::AccountId, BalanceOf<T>, <T as Config>::AlbumId>;
+		Album<<T as SystemConfig>::AccountId, BalanceOf<T>, <T as Config>::NFTId>;
 
 	// A value placed in storage that represents the current version of the Scheduler storage.
 	// This value is used by the `on_runtime_upgrade` logic to determine whether we run
@@ -123,8 +123,8 @@ pub mod pallet {
 
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 	#[scale_info(skip_type_params(AccountId, Balance))]
-	pub struct AlbumTracks<AccountId, Balance, AlbumId> {
-		pub track_id: Option<AlbumId>,
+	pub struct AlbumTracks<AccountId, Balance, NFTId> {
+		pub track_id: Option<NFTId>,
 		/// Token metadata
 		pub metadata: BoundedVec<u8, ConstU32<32>>,
 		/// Token owner
@@ -136,14 +136,14 @@ pub mod pallet {
 
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 	#[scale_info(skip_type_params(AccountId, Balance))]
-	pub struct Album<AccountId, Balance, AlbumId> {
+	pub struct Album<AccountId, Balance, NFTId> {
 		/// Token metadata
 		pub metadata: BoundedVec<u8, ConstU32<32>>,
 		/// NFT Issuer
 		pub issuer: AccountId,
 		/// Token owner
 		pub owners: Option<Vec<Owners<AccountId>>>,
-		pub tracks: Vec<AlbumTracks<AccountId, Balance, AlbumId>>,
+		pub tracks: Vec<AlbumTracks<AccountId, Balance, NFTId>>,
 		pub royalty: u64,
 		pub end_date: u64,
 	}
@@ -170,14 +170,6 @@ pub mod pallet {
 			+ MaxEncodedLen;
 
 		type NFTId: Member
-			+ Parameter
-			+ Default
-			+ Copy
-			+ HasCompact
-			+ AtLeast32BitUnsigned
-			+ MaxEncodedLen;
-
-		type AlbumId: Member
 			+ Parameter
 			+ Default
 			+ Copy
@@ -233,7 +225,7 @@ pub mod pallet {
 		},
 		MintedAlbum {
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			album_id: T::NFTId,
 			owner: T::AccountId,
 			caller: T::AccountId,
 		},
@@ -245,7 +237,7 @@ pub mod pallet {
 		},
 		BurnedAlbum {
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			album_id: T::NFTId,
 			owner: T::AccountId,
 		},
 		/// An nft NFT was transferred.
@@ -260,7 +252,7 @@ pub mod pallet {
 		/// An nft NFT was transferred.
 		TransferredAlbum {
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			album_id: T::NFTId,
 			from: T::AccountId,
 			to: T::AccountId,
 			price: BalanceOf<T>,
@@ -275,7 +267,7 @@ pub mod pallet {
 		},
 		SoldAlbum {
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			album_id: T::NFTId,
 			quantity: T::Quantity,
 			from: T::AccountId,
 			to: T::AccountId,
@@ -291,7 +283,7 @@ pub mod pallet {
 		},
 		AlbumSold {
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			album_id: T::NFTId,
 			price: BalanceOf<T>,
 			seller: T::AccountId,
 			buyer: T::AccountId,
@@ -304,7 +296,7 @@ pub mod pallet {
 		},
 		UpdatedAlbum {
 			collection_id: T::CollectionId,
-			nft_id: T::AlbumId,
+			nft_id: T::NFTId,
 		},
 		UpdatedShareProfitListNFT {
 			collection_id: T::CollectionId,
@@ -312,7 +304,7 @@ pub mod pallet {
 		},
 		UpdatedShareProfitListAlbumtracks {
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			album_id: T::NFTId,
 		},
 		SetConfig {
 			royalty_fee: u64,
@@ -328,7 +320,6 @@ pub mod pallet {
 		/// NFT not found
 		NFTNotFound,
 		AlbumNotFound,
-		NoAvailableAlbumId,
 		ArithmeticUnderflow,
 		/// The operator is not the owner of the NFT and has no permission
 		NoPermission,
@@ -364,7 +355,7 @@ pub mod pallet {
 
 		fn generate_album_id(
 			collection_id: &Self::CollectionId,
-		) -> Result<Self::AlbumId, DispatchError>;
+		) -> Result<Self::NFTId, DispatchError>;
 
 		fn calc_royalty(
 			royalty: u64,
@@ -427,10 +418,10 @@ pub mod pallet {
 		}
 
 		#[inline(always)]
-		fn generate_album_id(collection_id: &T::CollectionId) -> Result<T::AlbumId, DispatchError> {
+		fn generate_album_id(collection_id: &T::CollectionId) -> Result<T::NFTId, DispatchError> {
 			let album_id = NextAlbumId::<T>::try_mutate(
 				collection_id,
-				|id| -> Result<T::AlbumId, DispatchError> {
+				|id| -> Result<T::NFTId, DispatchError> {
 					let current_id = *id;
 					*id = id.checked_add(&One::one()).ok_or(Error::<T>::NoAvailableCollectionId)?;
 					Ok(current_id)
@@ -480,7 +471,24 @@ pub mod pallet {
 			total_supply: u64,
 		) -> DispatchResult;
 
+		fn has_permission_to_add_album_in_Auction(
+			bidder: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+			total_supply: u64,
+		) -> DispatchResult;
+
 		fn sell_nft(
+			seller: &Self::AccountId,
+			buyer: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+			price_input: u64,
+			auction_start_price_input: u64,
+			total_supply_input: u64,
+		) -> DispatchResult;
+
+		fn sell_album(
 			seller: &Self::AccountId,
 			buyer: &Self::AccountId,
 			collection_id: &Self::CollectionId,
@@ -506,6 +514,20 @@ pub mod pallet {
 			Self::has_permission_add_nft_in_auction(&bidder, &collection_id, &nft_id, total_supply)
 		}
 
+		fn has_permission_to_add_album_in_Auction(
+			bidder: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+			total_supply: u64,
+		) -> DispatchResult {
+			Self::has_permission_add_album_in_auction(
+				&bidder,
+				&collection_id,
+				&nft_id,
+				total_supply,
+			)
+		}
+
 		fn sell_nft(
 			seller: &Self::AccountId,
 			buyer: &Self::AccountId,
@@ -521,6 +543,31 @@ pub mod pallet {
 				auction_start_price_input.saturated_into::<BalanceOf<T>>();
 
 			Self::do_sell_nft(
+				seller.clone(),
+				buyer.clone(),
+				collection_id.clone(),
+				nft_id.clone(),
+				price,
+				auction_start_price,
+				total_supply,
+			)
+		}
+
+		fn sell_album(
+			seller: &Self::AccountId,
+			buyer: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+			price_input: u64,
+			auction_start_price_input: u64,
+			total_supply: u64,
+		) -> DispatchResult {
+			let price: BalanceOf<T> = price_input.saturated_into::<BalanceOf<T>>();
+
+			let auction_start_price: BalanceOf<T> =
+				auction_start_price_input.saturated_into::<BalanceOf<T>>();
+
+			Self::do_sell_album(
 				seller.clone(),
 				buyer.clone(),
 				collection_id.clone(),
@@ -575,8 +622,8 @@ pub mod pallet {
 	pub type AlbumLikes<T: Config> = StorageMap<
 		_,
 		Twox64Concat,
-		T::AccountId,                       // The user ID
-		Vec<(T::CollectionId, T::AlbumId)>, // The NFT IDs
+		T::AccountId,                     // The user ID
+		Vec<(T::CollectionId, T::NFTId)>, // The NFT IDs
 		OptionQuery,
 	>;
 
@@ -585,7 +632,7 @@ pub mod pallet {
 	#[pallet::unbounded]
 	#[pallet::getter(fn user_albums)]
 	pub type UserBuyAlbums<T: Config> =
-		StorageMap<_, Twox64Concat, T::AccountId, Vec<(T::CollectionId, T::AlbumId)>>;
+		StorageMap<_, Twox64Concat, T::AccountId, Vec<(T::CollectionId, T::NFTId)>>;
 
 	/// Store nft info.
 	#[pallet::storage]
@@ -610,7 +657,7 @@ pub mod pallet {
 		Twox64Concat,
 		T::CollectionId,
 		Twox64Concat,
-		T::AlbumId,
+		T::NFTId,
 		AlbumDetailsOf<T>,
 		OptionQuery,
 	>;
@@ -630,7 +677,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn next_album_id)]
 	pub type NextAlbumId<T: Config> =
-		StorageMap<_, Twox64Concat, T::CollectionId, T::AlbumId, ValueQuery>;
+		StorageMap<_, Twox64Concat, T::CollectionId, T::NFTId, ValueQuery>;
 
 	/// Storage version of the pallet.
 	///
@@ -733,7 +780,7 @@ pub mod pallet {
 		pub fn like_item_album(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			album_id: T::NFTId,
 		) -> DispatchResult {
 			let user = ensure_signed(origin)?;
 
@@ -771,7 +818,7 @@ pub mod pallet {
 			collection_id: T::CollectionId,
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			royalty: u64,
-			mut tracks: Vec<AlbumTracks<T::AccountId, BalanceOf<T>, T::AlbumId>>,
+			mut tracks: Vec<AlbumTracks<T::AccountId, BalanceOf<T>, T::NFTId>>,
 			end_date: u64,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
@@ -784,7 +831,7 @@ pub mod pallet {
 		pub fn buy_album(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			album_id: T::NFTId,
 			total_supply: u64,
 		) -> DispatchResult {
 			let buyer = ensure_signed(origin)?;
@@ -798,13 +845,21 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			buyer: T::AccountId,
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			nft_id: T::NFTId,
 			price: BalanceOf<T>,
+			auction_start_price: BalanceOf<T>,
 			total_supply: u64,
 		) -> DispatchResult {
 			let seller = ensure_signed(origin)?;
-
-			Self::do_sell_album(seller, buyer, collection_id, album_id, price, total_supply)
+			Self::do_sell_album(
+				seller,
+				buyer,
+				collection_id,
+				nft_id,
+				price,
+				auction_start_price,
+				total_supply,
+			)
 		}
 
 		#[pallet::call_index(7)]
@@ -873,8 +928,8 @@ pub mod pallet {
 		pub fn update_share_profit_album(
 			origin: OriginFor<T>,
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
-			track_id: T::AlbumId,
+			album_id: T::NFTId,
+			track_id: T::NFTId,
 			updated_share_profits: Vec<ShareProfitsInfo<T::AccountId>>,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
@@ -946,6 +1001,13 @@ pub mod pallet {
 			<NFTs<T>>::get(collection_id, nft_id).ok_or(Error::<T>::NFTNotFound)
 		}
 
+		pub(crate) fn get_album(
+			collection_id: &T::CollectionId,
+			nft_id: &T::NFTId,
+		) -> Result<AlbumDetailsOf<T>, Error<T>> {
+			<Albums<T>>::get(collection_id, nft_id).ok_or(Error::<T>::AlbumNotFound)
+		}
+
 		pub(crate) fn has_permission_add_nft_in_auction(
 			bidder: &T::AccountId,
 			collection_id: &T::CollectionId,
@@ -957,6 +1019,23 @@ pub mod pallet {
 			let find_nft = Self::get_nft(&collection_id, &nft_id)?;
 
 			if let Some(owners) = find_nft.owners {
+				Self::check_owner_hash_enogh_total_suppply(&bidder, &owners, total_supply)?;
+			}
+
+			Ok(().into())
+		}
+
+		pub(crate) fn has_permission_add_album_in_auction(
+			bidder: &T::AccountId,
+			collection_id: &T::CollectionId,
+			nft_id: &T::NFTId,
+			total_supply: u64,
+		) -> DispatchResult {
+			Self::get_collection(&collection_id)?;
+
+			let find_album = Self::get_album(&collection_id, &nft_id)?;
+
+			if let Some(owners) = find_album.owners {
 				Self::check_owner_hash_enogh_total_suppply(&bidder, &owners, total_supply)?;
 			}
 
@@ -1051,7 +1130,7 @@ pub mod pallet {
 			collection_id: T::CollectionId,
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			royalty: u64,
-			mut tracks: Vec<AlbumTracks<T::AccountId, BalanceOf<T>, T::AlbumId>>,
+			mut tracks: Vec<AlbumTracks<T::AccountId, BalanceOf<T>, T::NFTId>>,
 			end_date: u64,
 		) -> DispatchResult {
 			// Check that the collection exists
@@ -1211,7 +1290,7 @@ pub mod pallet {
 		fn do_buy_album(
 			buyer: T::AccountId,
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			album_id: T::NFTId,
 			total_supply: u64,
 		) -> DispatchResult {
 			// Retrieve the Album.
@@ -1267,80 +1346,6 @@ pub mod pallet {
 			// 	  price: price });
 
 			Ok(().into())
-		}
-
-		#[transactional]
-		fn do_sell_album(
-			seller: T::AccountId,
-			buyer: T::AccountId,
-			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
-			price: BalanceOf<T>,
-			total_supply: u64,
-		) -> DispatchResult {
-			// Retrieve the Album.
-			Albums::<T>::try_mutate_exists(
-				collection_id,
-				album_id,
-				|album_option| -> Result<_, DispatchError> {
-					let mut album = album_option.as_mut().ok_or(Error::<T>::AlbumNotFound)?;
-
-					// Calculate the royalty.
-					let royalty_amount = T::calc_royalty(album.royalty, &price)?;
-
-					// The remaining amount after subtracting the royalty.
-					let remaining_amount = price.clone() - royalty_amount;
-
-					// Transfer the royalty to the creator.
-					T::Currency::transfer(
-						&buyer,
-						&album.issuer,
-						royalty_amount,
-						ExistenceRequirement::KeepAlive,
-					)?;
-
-					// Transfer the remaining balance to the current owner (seller).
-					T::Currency::transfer(
-						&buyer,
-						&seller,
-						remaining_amount,
-						ExistenceRequirement::KeepAlive,
-					)?;
-
-					let mut index: usize = 0;
-					// Ensure the seller is an owner of this Album.
-					match &album.owners {
-						Some(ref owners) => {
-							let mut owners = owners.clone();
-							index = Self::find_index_owner(&buyer, &owners)?;
-							// Remove the seller from the owners.
-							owners.remove(index);
-
-							// Add the buyer to the owners.
-							owners.push(Owners {
-								address: buyer.clone(),
-								total_supply: total_supply.clone(),
-							});
-							Ok(())
-						},
-						None => Err(Error::<T>::OwnersEmpty),
-					}?;
-
-					Self::user_buy_album(&buyer, &collection_id, &album_id)?;
-					Self::retain_album_owners(&seller, &collection_id, &album_id)?;
-
-					Self::deposit_event(Event::AlbumSold {
-						collection_id,
-						album_id,
-						price: price.clone(),
-						seller: seller.clone(),
-						buyer: buyer.clone(),
-						royalty: album.royalty,
-					});
-
-					Ok(())
-				},
-			)
 		}
 
 		#[transactional]
@@ -1437,6 +1442,100 @@ pub mod pallet {
 			)
 		}
 
+		#[transactional]
+		fn do_sell_album(
+			seller: T::AccountId,
+			buyer: T::AccountId,
+			collection_id: T::CollectionId,
+			nft_id: T::NFTId,
+			price: BalanceOf<T>,
+			auction_start_price: BalanceOf<T>,
+			total_supply: u64,
+		) -> DispatchResult {
+			// Retrieve the Album.
+			Albums::<T>::try_mutate_exists(
+				collection_id,
+				nft_id,
+				|nft_option| -> Result<_, DispatchError> {
+					let mut nft = nft_option.as_mut().ok_or(Error::<T>::AlbumNotFound)?;
+
+					// Unreserve deposits of bidder and owner
+					<T as pallet::Config>::Currency::unreserve(&buyer, price);
+					<T as pallet::Config>::Currency::unreserve(&seller, auction_start_price);
+
+					// Calculate the royalty.
+					let royalty_amount = T::calc_royalty_and_fee(nft.royalty, &price)?;
+
+					// The remaining amount after subtracting the royalty.
+					let remaining_amount = price.clone() - (royalty_amount.0 + royalty_amount.1);
+
+					// Transfer the royalty to the creator.
+					T::Currency::transfer(
+						&buyer,
+						&nft.issuer,
+						royalty_amount.0,
+						ExistenceRequirement::KeepAlive,
+					)?;
+
+					T::Currency::transfer(
+						&buyer,
+						&nft.issuer,
+						royalty_amount.1,
+						ExistenceRequirement::KeepAlive,
+					)?;
+
+					// Transfer the remaining balance to the current owner (seller).
+					T::Currency::transfer(
+						&buyer,
+						&seller,
+						remaining_amount,
+						ExistenceRequirement::KeepAlive,
+					)?;
+
+					let mut index: usize = 0;
+					// Ensure the seller is an owner of this Album.
+					match &mut nft.owners {
+						Some(ref mut owners) => {
+							index = Self::find_index_owner(&seller, owners)?;
+							// If total supply reduces to zero, remove the owner.
+							// NOTE: total_supply is u64 type, so no as_mut() is needed.
+							owners[index].total_supply = owners[index]
+								.total_supply
+								.checked_sub(total_supply)
+								.ok_or(Error::<T>::ArithmeticUnderflow)?;
+
+							// NOTE: total_supply is u64 type, so compare with 0, not 0.0.
+							// if owners[index].total_supply == 0 {
+							// 	owners.remove(index);
+							// 	Self::retain_nft_owners(&seller, &collection_id, &nft_id)?;
+							// }
+
+							// Add the buyer to the owners.
+							owners.push(Owners {
+								address: buyer.clone(),
+								total_supply: total_supply.clone(),
+							});
+							Ok(())
+						},
+						None => Err(Error::<T>::OwnersEmpty),
+					}?;
+
+					Self::user_buy_album(&buyer, &collection_id, &nft_id)?;
+
+					Self::deposit_event(Event::AlbumSold {
+						collection_id,
+						album_id: nft_id,
+						price: price.clone(),
+						seller: seller.clone(),
+						buyer: buyer.clone(),
+						royalty: nft.royalty,
+					});
+
+					Ok(())
+				},
+			)
+		}
+
 		fn user_buy_nft(
 			issuer: &T::AccountId,
 			collection_id: &T::CollectionId,
@@ -1461,7 +1560,7 @@ pub mod pallet {
 		fn user_buy_album(
 			issuer: &T::AccountId,
 			collection_id: &T::CollectionId,
-			album_id: &T::AlbumId,
+			album_id: &T::NFTId,
 		) -> Result<(), DispatchError> {
 			UserBuyAlbums::<T>::try_mutate(
 				issuer.clone(),
@@ -1482,7 +1581,7 @@ pub mod pallet {
 		fn retain_album_owners(
 			seller: &T::AccountId,
 			collection_id: &T::CollectionId,
-			album_id: &T::AlbumId,
+			album_id: &T::NFTId,
 		) -> Result<(), DispatchError> {
 			UserBuyAlbums::<T>::try_mutate(
 				seller.clone(),
@@ -1521,7 +1620,7 @@ pub mod pallet {
 
 		fn do_transfer_album_share_profit(
 			buyer: &T::AccountId,
-			track: &AlbumTracks<T::AccountId, BalanceOf<T>, T::AlbumId>,
+			track: &AlbumTracks<T::AccountId, BalanceOf<T>, T::NFTId>,
 			total_supply: u64,
 		) -> Result<(), DispatchError> {
 			for info in &track.share_profits {
@@ -1569,8 +1668,8 @@ pub mod pallet {
 		fn do_update_share_profit_album(
 			issuer: T::AccountId,
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
-			track_id: T::AlbumId,
+			album_id: T::NFTId,
+			track_id: T::NFTId,
 			updated_share_profits: Vec<ShareProfitsInfo<T::AccountId>>,
 		) -> DispatchResult {
 			// Check that the collection exists
@@ -1658,7 +1757,7 @@ pub mod pallet {
 		fn do_butn_album(
 			burner: T::AccountId,
 			collection_id: T::CollectionId,
-			album_id: T::AlbumId,
+			album_id: T::NFTId,
 		) -> DispatchResult {
 			// Check that the NFT exists
 			let album =

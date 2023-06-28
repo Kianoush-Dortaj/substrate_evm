@@ -48,6 +48,7 @@ pub mod pallet {
 		pub total_supply: u64,
 		pub highest_bidder: AccountId,
 		pub deposit: Balance,
+		pub is_album: bool,
 	}
 
 	pub type BalanceOf<T> =
@@ -170,16 +171,26 @@ pub mod pallet {
 			nft_id: T::NFTId,
 			start_price: BalanceOf<T>,
 			total_supply: u64,
+			is_album: bool,
 			deposit: BalanceOf<T>,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
-			T::NFTsPallet::has_permission_to_add_nft_in_Auction(
-				&issuer,
-				&collection_id,
-				&nft_id,
-				total_supply,
-			)?;
+			if is_album {
+				T::NFTsPallet::has_permission_to_add_album_in_Auction(
+					&issuer,
+					&collection_id,
+					&nft_id,
+					total_supply,
+				)?;
+			} else {
+				T::NFTsPallet::has_permission_to_add_nft_in_Auction(
+					&issuer,
+					&collection_id,
+					&nft_id,
+					total_supply,
+				)?;
+			}
 
 			let auction = NFTAuction {
 				collection_id,
@@ -189,6 +200,7 @@ pub mod pallet {
 				highest_bid: start_price,
 				highest_bidder: issuer.clone(),
 				total_supply,
+				is_album,
 				deposit,
 			};
 
@@ -316,15 +328,29 @@ pub mod pallet {
 			let price_calc: u64 = price.saturated_into::<u64>();
 			let start_price: u64 = auction.start_price.saturated_into::<u64>();
 
-			T::NFTsPallet::sell_nft(
-				&owner,
-				&bidder,
-				&auction.collection_id,
-				&auction.nft_id,
-				price_calc.clone(),
-				start_price.clone(),
-				auction.total_supply,
-			)?;
+			if auction.is_album {
+				T::NFTsPallet::sell_album(
+					&owner,
+					&bidder,
+					&auction.collection_id,
+					&auction.nft_id,
+					price_calc.clone(),
+					start_price.clone(),
+					auction.total_supply,
+				)?;
+			} else {
+				T::NFTsPallet::sell_nft(
+					&owner,
+					&bidder,
+					&auction.collection_id,
+					&auction.nft_id,
+					price_calc.clone(),
+					start_price.clone(),
+					auction.total_supply,
+				)?;
+			}
+
+		
 
 			// Delete auction from storage
 			Bids::<T>::remove_prefix(&auction_key, None);
