@@ -255,7 +255,6 @@ pub mod pallet {
 			album_id: T::NFTId,
 			from: T::AccountId,
 			to: T::AccountId,
-			price: BalanceOf<T>,
 		},
 		SoldNFT {
 			collection_id: T::CollectionId,
@@ -1294,7 +1293,7 @@ pub mod pallet {
 			total_supply: u64,
 		) -> DispatchResult {
 			// Retrieve the Album.
-			Albums::<T>::try_mutate_exists(
+			let album = Albums::<T>::try_mutate_exists(
 				collection_id.clone(),
 				album_id,
 				|album_option| -> Result<_, DispatchError> {
@@ -1305,10 +1304,10 @@ pub mod pallet {
 
 					let now_as_u64_millis = Self::convert_moment_to_u64_in_milliseconds(now)?;
 
-					ensure!(
-						now_as_u64_millis > album.end_date,
-						"Current date is not after end date."
-					);
+					// ensure!(
+					// 	now_as_u64_millis > album.end_date,
+					// 	"Current date is not after end date."
+					// );
 
 					for track in &album.tracks {
 						// Reserve the buyer's balance.
@@ -1338,12 +1337,12 @@ pub mod pallet {
 
 			Self::user_buy_album(&buyer, &collection_id, &album_id)?;
 
-			// Self::deposit_event(Event::TransferredAlbum {
-			// 	collection_id: collection_id.clone(),
-			// 	 album_id: album_id.clone(),
-			// 	 from:album.issuer.clone(),
-			// 	 to: buyer.clone(),
-			// 	  price: price });
+			Self::deposit_event(Event::TransferredAlbum {
+				collection_id: collection_id.clone(),
+				album_id: album_id.clone(),
+				from: album.issuer.clone(),
+				to: buyer.clone(),
+			});
 
 			Ok(().into())
 		}

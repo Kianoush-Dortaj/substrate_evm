@@ -1,6 +1,7 @@
 {
     "rust-analyzer.linkedProjects": [
         "./frame/nfts/Cargo.toml",
-        "./frame/acn/Cargo.toml"
+        "./frame/acn/Cargo.toml",
+        "./bin/node/primitives/account/Cargo.toml"
     ]
 }
