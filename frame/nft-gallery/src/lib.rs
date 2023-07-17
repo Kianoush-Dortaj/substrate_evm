@@ -90,28 +90,48 @@ pub mod pallet {
 		type MetaDataByteDeposit: Get<BalanceOf<Self>>;
 	}
 
-	pub trait MarketPalceHelper {
+	pub trait MarketPalceHelper: Config {
 		type MarketHash;
-		type OwnerAccountId;
+		type UserAccountId;
 
 		fn get_market_palce_info(
-			owner: &Self::OwnerAccountId,
+			owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+		) -> Result<MarketPlace<Self>, DispatchError>;
+
+		fn send_fee_to_market_place_owner(
+			issuer: &Self::UserAccountId,
+			owner: &Self::UserAccountId,
 			store_hash: &Self::MarketHash,
 		) -> DispatchResult;
 	}
 
-	 impl<T: Config> MarketPalceHelper for Pallet<T> {
+	impl<T: Config> MarketPalceHelper for T {
+		
 		type MarketHash = HashId<T>;
-		type OwnerAccountId = AccountOf<T>;
+		type UserAccountId = AccountOf<T>;
 
 		fn get_market_palce_info(
-			owner: &Self::OwnerAccountId,
+			owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+		) -> Result<MarketPlace<T>, DispatchError> {
+
+			 MarketplaceStorage::<T>::get(owner, store_hash).ok_or(Error::<T>::MarketNotFound.into())
+		}
+
+		fn send_fee_to_market_place_owner(
+			issuer: &Self::UserAccountId,
+			owner: &Self::UserAccountId,
 			store_hash: &Self::MarketHash,
 		) -> DispatchResult {
-			let market_place = MarketplaceStorage::<T>::get(owner, store_hash)
-				.ok_or(Error::<T>::MarketNotFound)?;
+			let marketPlace_info = MarketplaceStorage::<T>::get(owner, store_hash).ok_or(Error::<T>::MarketNotFound)?;
+		
+			let _ = T::Currency::transfer(&issuer,&marketPlace_info.owner,marketPlace_info.fee,ExistenceRequirement::AllowDeath)
+				.map_err(|_| Error::<T>::ErrorTransferMarketPlaceFee)?;
+		
 			Ok(())
 		}
+		
 	}
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/main-docs/build/events-errors/
@@ -138,6 +158,7 @@ pub mod pallet {
 	#[pallet::error]
 	pub enum Error<T> {
 		MarketNotFound,
+		ErrorTransferMarketPlaceFee,
 	}
 
 	/// Store nft info.

@@ -34,6 +34,7 @@ pub use weights::*;
 pub mod pallet {
 	use super::*;
 	use frame_system::pallet_prelude::*;
+	use nft_gallery::AccountOf;
 
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as SystemConfig>::AccountId>>::Balance;
@@ -201,7 +202,7 @@ pub mod pallet {
 
 		type NFTGallery: nft_gallery::MarketPalceHelper<
 			MarketHash = Self::Hash,
-			OwnerAccountId = Self::AccountId,
+			UserAccountId = Self::AccountId,
 		>;
 	}
 
@@ -701,11 +702,16 @@ pub mod pallet {
 		pub fn create_collection(
 			origin: OriginFor<T>,
 			metadata: BoundedVec<u8, ConstU32<32>>,
-			market_owner_address: T::AccountId,
+			market_owner_address: AccountOf<T>,
 			store_hash_id: T::Hash,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
-			T::NFTGallery::get_market_palce_info(&market_owner_address, &store_hash_id)?;
+			T::NFTGallery::send_fee_to_market_place_owner(
+				&issuer,
+				&market_owner_address,
+				&store_hash_id,
+			)?;
+
 			Self::do_create_collection(issuer, metadata)
 		}
 
