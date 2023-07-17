@@ -1704,6 +1704,18 @@ impl pallet_nfts::Config for Runtime {
 	type MetaDataByteDeposit = MetaDataByteDeposit;
 }
 
+impl nft_gallery::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type PalletWeightInfo = nft_gallery::weights::SubstrateWeight<Runtime>;
+	type Quantity = u64;
+	type NFTId = u64;
+	type CollectionId = u64;
+	type Currency = Balances;
+	type CollectionNFTDeposit = NFTCollectionDeposit;
+	type NFTDeposit = NFTDeposit;
+	type MetaDataByteDeposit = MetaDataByteDeposit;
+}
+
 parameter_types! {
 	pub const CollectionDeposit: Balance = 100 * DOLLARS;
 	pub const ItemDeposit: Balance = 1 * DOLLARS;
@@ -1911,6 +1923,7 @@ construct_runtime!(
 		MessageQueue: pallet_message_queue,
 		NFT:pallet_nfts,
 		ACN:pallet_acn,
+		Gallery:nft_gallery,
 
 		//EVM
 		EVM: pallet_evm,

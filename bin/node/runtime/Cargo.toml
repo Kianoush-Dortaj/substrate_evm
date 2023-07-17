@@ -114,6 +114,7 @@ pallet-whitelist = { version = "4.0.0-dev", default-features = false, path = "..
 # Custom Pallet
 pallet-nfts = { version = "0.0.1", default-features = false, path = "../../../frame/nfts" }
 pallet-acn = { version = "4.0.0-dev", default-features = false, path = "../../../frame/acn" }
+nft-gallery = {version = "0.0.1", default-features = false, path = "../../../frame/nft-gallery"}
 
 # Frontier
 fp-rpc = {version="3.0.0-dev", path = "../../../evm-primitives/rpc", default-features = false }
@@ -227,6 +228,7 @@ std = [
 	 # cuntom 
 	 "pallet-nfts/std",
 	 "pallet-acn/std",
+	 "nft-gallery/std",
      #frontier
 	'fp-rpc/std',
     'fp-self-contained/std',

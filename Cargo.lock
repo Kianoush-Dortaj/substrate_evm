@@ -4654,6 +4654,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "nft-gallery"
+version = "0.0.1"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-balances",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-arithmetic",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "nix"
 version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4692,6 +4710,7 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "frame-try-runtime",
  "log",
+ "nft-gallery",
  "node-primitives",
  "pallet-acn",
  "pallet-alliance",
