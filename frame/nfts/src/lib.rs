@@ -19,6 +19,8 @@ use frame_support::{
 use frame_system::Config as SystemConfig;
 pub use pallet::*;
 
+use nft_gallery::MarketPalceHelper;
+
 #[cfg(test)]
 mod mock;
 
@@ -196,6 +198,11 @@ pub mod pallet {
 		/// The basic amount of funds that must be reserved for an asset instance.
 		#[pallet::constant]
 		type MetaDataByteDeposit: Get<BalanceOf<Self>>;
+
+		type NFTGallery: nft_gallery::MarketPalceHelper<
+			MarketHash = Self::Hash,
+			OwnerAccountId = Self::AccountId,
+		>;
 	}
 
 	// The pallet's runtime storage items.
@@ -694,9 +701,11 @@ pub mod pallet {
 		pub fn create_collection(
 			origin: OriginFor<T>,
 			metadata: BoundedVec<u8, ConstU32<32>>,
+			market_owner_address: T::AccountId,
+			store_hash_id: T::Hash,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
-
+			T::NFTGallery::get_market_palce_info(&market_owner_address, &store_hash_id)?;
 			Self::do_create_collection(issuer, metadata)
 		}
 

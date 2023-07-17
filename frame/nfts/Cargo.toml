@@ -24,10 +24,13 @@ sp-std = { version = "5.0.0", default-features = false, path = "../../primitives
 sp-arithmetic = { version = "6.0.0", default-features = false, path = "../../primitives/arithmetic" }
 sp-core = { version = "7.0.0", default-features = false, path = "../../primitives/core" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, path = "../timestamp" }
+nft-gallery ={ version = "0.0.1", default-features = false, path = "../nft-gallery" }
 
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", path = "../balances" }
 sp-core = { version = "7.0.0", path = "../../primitives/core" }
+
+
 
 [features]
 default = ["std"]
@@ -40,5 +43,6 @@ std = [
 	"sp-runtime/std",
 	"sp-std/std",
 	"pallet-timestamp/std",
+	"nft-gallery/std",
 ]
 try-runtime = ["frame-support/try-runtime"]

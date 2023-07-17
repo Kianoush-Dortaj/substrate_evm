@@ -1702,6 +1702,7 @@ impl pallet_nfts::Config for Runtime {
 	type CollectionNFTDeposit = NFTCollectionDeposit;
 	type NFTDeposit = NFTDeposit;
 	type MetaDataByteDeposit = MetaDataByteDeposit;
+	type NFTGallery = nft_gallery::Pallet<Runtime>;
 }
 
 impl nft_gallery::Config for Runtime {

@@ -90,6 +90,29 @@ pub mod pallet {
 		type MetaDataByteDeposit: Get<BalanceOf<Self>>;
 	}
 
+	pub trait MarketPalceHelper {
+		type MarketHash;
+		type OwnerAccountId;
+
+		fn get_market_palce_info(
+			owner: &Self::OwnerAccountId,
+			store_hash: &Self::MarketHash,
+		) -> DispatchResult;
+	}
+
+	 impl<T: Config> MarketPalceHelper for Pallet<T> {
+		type MarketHash = HashId<T>;
+		type OwnerAccountId = AccountOf<T>;
+
+		fn get_market_palce_info(
+			owner: &Self::OwnerAccountId,
+			store_hash: &Self::MarketHash,
+		) -> DispatchResult {
+			let market_place = MarketplaceStorage::<T>::get(owner, store_hash)
+				.ok_or(Error::<T>::MarketNotFound)?;
+			Ok(())
+		}
+	}
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/main-docs/build/events-errors/
 	#[pallet::event]
