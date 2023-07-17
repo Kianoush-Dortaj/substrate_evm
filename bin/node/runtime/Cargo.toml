@@ -113,6 +113,7 @@ pallet-whitelist = { version = "4.0.0-dev", default-features = false, path = "..
 
 # Custom Pallet
 pallet-nfts = { version = "0.0.1", default-features = false, path = "../../../frame/nfts" }
+new-nft = { version = "0.0.1", default-features = false, path = "../../../frame/new-nft" }
 pallet-acn = { version = "4.0.0-dev", default-features = false, path = "../../../frame/acn" }
 nft-gallery = {version = "0.0.1", default-features = false, path = "../../../frame/nft-gallery"}
 
@@ -229,6 +230,7 @@ std = [
 	 "pallet-nfts/std",
 	 "pallet-acn/std",
 	 "nft-gallery/std",
+	 "new-nft/std",
      #frontier
 	'fp-rpc/std',
     'fp-self-contained/std',

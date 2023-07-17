@@ -28,7 +28,7 @@ pub mod weights;
 pub use weights::*;
 
 pub mod structs;
-pub use structs::NFTStructs;
+pub use structs::MarketPlaceStructs;
 
 pub mod types;
 pub use types::Types::{AccountOf, BalanceOf, MarketPlace};
@@ -90,14 +90,9 @@ pub mod pallet {
 		type MetaDataByteDeposit: Get<BalanceOf<Self>>;
 	}
 
-	pub trait MarketPalceHelper: Config {
+	pub trait MarketPalceHelper {
 		type MarketHash;
 		type UserAccountId;
-
-		fn get_market_palce_info(
-			owner: &Self::UserAccountId,
-			store_hash: &Self::MarketHash,
-		) -> Result<MarketPlace<Self>, DispatchError>;
 
 		fn send_fee_to_market_place_owner(
 			issuer: &Self::UserAccountId,
@@ -106,32 +101,28 @@ pub mod pallet {
 		) -> DispatchResult;
 	}
 
-	impl<T: Config> MarketPalceHelper for T {
-		
-		type MarketHash = HashId<T>;
-		type UserAccountId = AccountOf<T>;
-
-		fn get_market_palce_info(
-			owner: &Self::UserAccountId,
-			store_hash: &Self::MarketHash,
-		) -> Result<MarketPlace<T>, DispatchError> {
-
-			 MarketplaceStorage::<T>::get(owner, store_hash).ok_or(Error::<T>::MarketNotFound.into())
-		}
+	impl<T: Config> MarketPalceHelper for Pallet<T> {
+		type MarketHash = T::Hash;
+		type UserAccountId = T::AccountId;
 
 		fn send_fee_to_market_place_owner(
 			issuer: &Self::UserAccountId,
 			owner: &Self::UserAccountId,
 			store_hash: &Self::MarketHash,
 		) -> DispatchResult {
-			let marketPlace_info = MarketplaceStorage::<T>::get(owner, store_hash).ok_or(Error::<T>::MarketNotFound)?;
-		
-			let _ = T::Currency::transfer(&issuer,&marketPlace_info.owner,marketPlace_info.fee,ExistenceRequirement::AllowDeath)
-				.map_err(|_| Error::<T>::ErrorTransferMarketPlaceFee)?;
-		
+			let marketPlace_info = MarketplaceStorage::<T>::get(owner, store_hash)
+				.ok_or(Error::<T>::MarketNotFound)?;
+
+			let _ = T::Currency::transfer(
+				&issuer,
+				&marketPlace_info.owner,
+				marketPlace_info.fee,
+				ExistenceRequirement::AllowDeath,
+			)
+			.map_err(|_| Error::<T>::ErrorTransferMarketPlaceFee)?;
+
 			Ok(())
 		}
-		
 	}
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/main-docs/build/events-errors/
@@ -216,7 +207,7 @@ pub mod pallet {
 		) -> DispatchResult {
 			let hash_id = T::Hashing::hash_of(&metadata);
 
-			let market_place = NFTStructs::Marketplace {
+			let market_place = MarketPlaceStructs::Marketplace {
 				fee,
 				issuer: issuer.clone(),
 				owner: issuer.clone(),

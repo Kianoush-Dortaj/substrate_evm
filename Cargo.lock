@@ -4654,6 +4654,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "new-nft"
+version = "0.0.1"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "nft-gallery",
+ "pallet-balances",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-arithmetic",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "nft-gallery"
 version = "0.0.1"
 dependencies = [
@@ -4710,6 +4729,7 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "frame-try-runtime",
  "log",
+ "new-nft",
  "nft-gallery",
  "node-primitives",
  "pallet-acn",

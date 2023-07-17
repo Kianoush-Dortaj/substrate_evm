@@ -1705,6 +1705,13 @@ impl pallet_nfts::Config for Runtime {
 	type NFTGallery = nft_gallery::Pallet<Runtime>;
 }
 
+impl new_nft::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type PalletWeightInfo = new_nft::weights::SubstrateWeight<Runtime>;
+	type Currency = Balances;
+	type NFTGallery = nft_gallery::Pallet<Runtime>;
+}
+
 impl nft_gallery::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type PalletWeightInfo = nft_gallery::weights::SubstrateWeight<Runtime>;
@@ -1925,6 +1932,7 @@ construct_runtime!(
 		NFT:pallet_nfts,
 		ACN:pallet_acn,
 		Gallery:nft_gallery,
+		NewNFT:new_nft,
 
 		//EVM
 		EVM: pallet_evm,

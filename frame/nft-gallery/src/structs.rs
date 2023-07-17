@@ -3,7 +3,7 @@ use frame_support::{traits::ConstU32, BoundedVec};
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 
-pub mod NFTStructs {
+pub mod MarketPlaceStructs {
 	use super::*;
 
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
