@@ -19,7 +19,7 @@ pub use pallet::*;
 use nft_gallery::MarketPalceHelper;
 
 pub mod structs;
-pub use structs::NFTStructs::{Collection, NFT};
+pub use structs::NFTStructs::{Collection, Owners, NFT};
 
 pub mod types;
 pub use types::Types::{
@@ -90,13 +90,23 @@ pub mod pallet {
 			issuer: AccountOf<T>,
 			nft_id: HashId<T>,
 		},
+		UpdateNFT {
+			store_id: HashId<T>,
+			collection_id: HashId<T>,
+			issuer: AccountOf<T>,
+			nft_id: HashId<T>,
+		},
 	}
 
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
 		CollectionNotFound,
-		YouAreNotPwnerOfCollection,
+		YouAreNotOwnerOfCollection,
+		NFTNotFound,
+		InvalidPercentageSum,
+		NFTHasOwner,
+		YouAreNotOwner,
 	}
 
 	/// Store collection info.
@@ -319,7 +329,6 @@ pub mod pallet {
 		/// This function is flagged as `transactional`. If it fails, all changes to storage will be
 		/// rolled back.
 		#[transactional]
-		#[transactional]
 		fn do_update_collection(
 			issuer: T::AccountId,
 			metadata: BoundedVec<u8, ConstU32<32>>,
@@ -331,6 +340,9 @@ pub mod pallet {
 				|collection_info| -> Result<(), DispatchError> {
 					match collection_info {
 						Some(info) => {
+							if info.issuer != issuer.clone() {
+								return Err(Error::<T>::YouAreNotOwnerOfCollection.into())
+							}
 							info.metadata = metadata.clone();
 							Ok(())
 						},
@@ -397,7 +409,11 @@ pub mod pallet {
 			// Check that the collection exists
 			let collection = Self::get_collection(&issuer, &store_id, &collection_id)?;
 
-			ensure!(collection.issuer == issuer, Error::<T>::YouAreNotPwnerOfCollection);
+			ensure!(collection.issuer == issuer, Error::<T>::YouAreNotOwnerOfCollection);
+
+			let sum: u64 = share_profits.iter().map(|info| info.percentage).sum();
+			ensure!(sum == 100, Error::<T>::InvalidPercentageSum);
+
 			T::NFTGallery::check_allow_royalty(&store_owner_address, &store_id, royalty.clone())?;
 
 			// Create the NFT instance
@@ -425,6 +441,165 @@ pub mod pallet {
 				store_id: store_id.clone(),
 				nft_id: nft_hash_id.clone(),
 			});
+			Ok(().into())
+		}
+		/// This is a private method that carries out the process of updating a Non-Fungible Token
+		/// (NFT).
+		///
+		/// # Arguments
+		///
+		/// * `issuer` - The account identifier of the user issuing the NFT.
+		/// * `store_owner_address` - The account identifier of the store owner where the NFT will
+		///   be listed.
+		/// * `collection_id` - The unique identifier of the collection to which this NFT belongs.
+		/// * `store_id` - The unique identifier of the store where the NFT will be listed.
+		/// * `nft_id` - The unique identifier of the NFT being updated.
+		/// * `metadata` - The metadata associated with the NFT, limited in size by `ConstU32<32>`.
+		/// * `royalty` - The royalty percentage for any future sales of the NFT.
+		/// * `share_profits` - The details of how profits will be shared, likely among multiple
+		///   stakeholders.
+		/// * `price` - The price at which the NFT will be listed.
+		/// * `end_date` - The end date for the listing of the NFT.
+		///
+		/// # Returns
+		///
+		/// * `DispatchResult` - The result of the function, indicating success or failure.
+		///
+		/// # Errors
+		///
+		/// This function can return `CollectionNotFound` if the referenced collection does not
+		/// exist. It can also return `YouAreNotPwnerOfCollection` if the issuer is not the owner of
+		/// the collection, `InvalidPercentageSum` if the sum of share profit percentages does not
+		/// equal 100, `NFTHasOwner` if the NFT already has an owner, and `YouAreNotOwner` if the
+		/// issuer is not the current owner of the NFT. Additionally, it will fail if
+		/// `check_allow_royalty` fails for the given `store_owner_address` and `store_id`, and
+		/// `NFTNotFound` if the given NFT doesn't exist.
+		///
+		/// # Events
+		///
+		/// This function emits an `UpdateNFT` event upon successfully updating an NFT.
+		///
+		/// # Transactional
+		///
+		/// This function is flagged as `transactional`. If it fails, all changes to storage will be
+		/// rolled back.
+		#[transactional]
+		fn do_update_mint_nft(
+			issuer: AccountOf<T>,
+			store_owner_address: AccountOf<T>,
+			collection_id: HashId<T>,
+			store_id: HashId<T>,
+			nft_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			royalty: u64,
+			share_profits: Vec<SahreProfitDetailsOf<T>>,
+			price: BalanceOf<T>,
+			end_date: u64,
+		) -> DispatchResult {
+			// Check that the collection exists
+			let collection = Self::get_collection(&issuer, &store_id, &collection_id)?;
+
+			ensure!(collection.issuer == issuer, Error::<T>::YouAreNotOwnerOfCollection);
+
+			let sum: u64 = share_profits.iter().map(|info| info.percentage).sum();
+			ensure!(sum == 100, Error::<T>::InvalidPercentageSum);
+
+			T::NFTGallery::check_allow_royalty(&store_owner_address, &store_id, royalty.clone())?;
+
+			// Insert the NFT instance to the NFTs storage
+			NFTs::<T>::try_mutate(
+				(issuer.clone(), store_id.clone(), collection_id.clone(), nft_id.clone()),
+				|nft_details| -> Result<(), DispatchError> {
+					match nft_details {
+						Some(info) => {
+							if let Some(owners) = &info.owners {
+								if owners.len() > 0 {
+									return Err(Error::<T>::NFTHasOwner.into())
+								}
+							}
+
+							if info.issuer != issuer.clone() {
+								return Err(Error::<T>::YouAreNotOwner.into())
+							}
+
+							info.metadata = metadata.clone();
+							info.share_profits = share_profits.clone();
+							info.price = price.clone();
+							info.end_date = end_date.clone();
+
+							Ok(())
+						},
+						None => Err(Error::<T>::NFTNotFound.into()),
+					}
+				},
+			)?;
+
+			// Emit the UpdateNFT event
+			Self::deposit_event(Event::UpdateNFT {
+				collection_id,
+				issuer: issuer.clone(),
+				store_id: store_id.clone(),
+				nft_id: nft_id.clone(),
+			});
+			Ok(().into())
+		}
+
+		#[transactional]
+		fn do_buy_nft(
+			buyer: T::AccountId,
+			nft_owner_address_id: AccountOf<T>,
+			collection_id: HashId<T>,
+			store_id: HashId<T>,
+			nft_id: HashId<T>,
+			total_supply: u64,
+		) -> DispatchResult {
+			let nft = NFTs::<T>::try_mutate(
+				(
+					nft_owner_address_id.clone(),
+					store_id.clone(),
+					collection_id.clone(),
+					nft_id.clone(),
+				),
+				|nft_option| -> Result<_, DispatchError> {
+					let mut nft = nft_option.as_mut().ok_or(Error::<T>::NFTNotFound)?;
+
+					// Reserve the buyer's balance.
+					T::Currency::reserve(&buyer, nft.price.clone())
+						.map_err(|_| DispatchError::Other("Cannot reserve balance"))?;
+
+					Self::do_transfer_nft_share_profit(
+						&buyer,
+						&nft.share_profits,
+						&nft.price,
+						total_supply,
+					)?;
+
+					// Update the NFT.
+					let ownres = Owners::<T::AccountId> {
+						address: buyer.clone(),
+						total_supply: total_supply.clone(),
+					};
+
+					if let Some(owners_vec) = &mut nft.owners {
+						owners_vec.push(ownres);
+					} else {
+						nft.owners = Some(vec![ownres]);
+					}
+
+					Ok(nft.clone())
+				},
+			)?;
+
+			// Emit event
+			Self::deposit_event(Event::TransferredNFT {
+				collection_id,
+				token_id: nft_id,
+				quantity: One::one(),
+				from: buyer.clone(),
+				to: buyer,
+				price: nft.price,
+			});
+
 			Ok(().into())
 		}
 	}

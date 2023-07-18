@@ -117,13 +117,13 @@ pub mod pallet {
 			owner: &Self::UserAccountId,
 			store_hash: &Self::MarketHash,
 		) -> DispatchResult {
-			let marketPlace_info = MarketplaceStorage::<T>::get(owner, store_hash)
+			let market_place_info = MarketplaceStorage::<T>::get(owner, store_hash)
 				.ok_or(Error::<T>::MarketNotFound)?;
 
 			let _ = T::Currency::transfer(
 				&issuer,
-				&marketPlace_info.owner,
-				marketPlace_info.fee,
+				&market_place_info.owner,
+				market_place_info.fee,
 				ExistenceRequirement::AllowDeath,
 			)
 			.map_err(|_| Error::<T>::ErrorTransferMarketPlaceFee)?;
