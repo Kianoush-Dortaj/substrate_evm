@@ -5,7 +5,6 @@ use frame_support::sp_runtime::{
 	traits::{AtLeast32BitUnsigned, CheckedAdd, Hash, Member, One},
 	DispatchError, SaturatedConversion,
 };
-use sp_runtime::traits::UniqueSaturatedFrom;
 
 use frame_support::{
 	inherent::Vec,
@@ -25,6 +24,9 @@ pub mod types;
 pub use types::Types::{
 	AccountOf, BalanceOf, CollectionDetailsOf, HashId, NFTDetailsOf, SahreProfitDetailsOf,
 };
+
+pub mod utiles;
+pub use utiles::Utility::{calc_royalty_and_fee, do_transfer_nft_share_profit};
 
 #[cfg(test)]
 mod mock;
@@ -96,6 +98,15 @@ pub mod pallet {
 			issuer: AccountOf<T>,
 			nft_id: HashId<T>,
 		},
+		TransferredNFT {
+			collection_id: HashId<T>,
+			token_id: HashId<T>,
+			store_id: HashId<T>,
+			quantity: u64,
+			from: AccountOf<T>,
+			to: AccountOf<T>,
+			price: BalanceOf<T>,
+		},
 	}
 
 	// Errors inform users that something went wrong.
@@ -155,13 +166,8 @@ pub mod pallet {
 			store_hash_id: HashId<T>,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
-			T::NFTGallery::send_fee_to_market_place_owner(
-				&issuer,
-				&market_owner_address,
-				&store_hash_id,
-			)?;
 
-			Self::do_create_collection(issuer, metadata, store_hash_id)
+			Self::do_create_collection(issuer, metadata, store_hash_id, market_owner_address)
 		}
 		// Define the `update_collection` call for the pallet
 		// This function allows a user to update an existing collection of NFTs
@@ -183,7 +189,13 @@ pub mod pallet {
 				&store_hash_id,
 			)?;
 
-			Self::do_update_collection(issuer, metadata, store_hash_id, collection_hash_id)
+			Self::do_update_collection(
+				issuer,
+				metadata,
+				store_hash_id,
+				collection_hash_id,
+				market_owner_address,
+			)
 		}
 
 		#[pallet::call_index(2)]
@@ -279,7 +291,15 @@ pub mod pallet {
 			issuer: T::AccountId,
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			store_hash_id: HashId<T>,
+			market_owner_address: AccountOf<T>,
 		) -> DispatchResult {
+			// Store Transaction Fee
+			T::NFTGallery::send_fee_to_market_place_owner(
+				&issuer,
+				&market_owner_address,
+				&store_hash_id,
+			)?;
+
 			let collection_hash_id = T::Hashing::hash_of(&metadata);
 
 			let collection_details = Collection {
@@ -334,7 +354,15 @@ pub mod pallet {
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			store_hash_id: HashId<T>,
 			collection_hash_id: HashId<T>,
+			market_owner_address: AccountOf<T>,
 		) -> DispatchResult {
+			// Store Transaction Fee
+			T::NFTGallery::send_fee_to_market_place_owner(
+				&issuer,
+				&market_owner_address,
+				&store_hash_id,
+			)?;
+
 			Collections::<T>::try_mutate(
 				(issuer.clone(), collection_hash_id.clone(), store_hash_id.clone()),
 				|collection_info| -> Result<(), DispatchError> {
@@ -344,6 +372,7 @@ pub mod pallet {
 								return Err(Error::<T>::YouAreNotOwnerOfCollection.into())
 							}
 							info.metadata = metadata.clone();
+
 							Ok(())
 						},
 						None => Err(Error::<T>::CollectionNotFound.into()),
@@ -406,6 +435,12 @@ pub mod pallet {
 			price: BalanceOf<T>,
 			end_date: u64,
 		) -> DispatchResult {
+			// Store Transaction Fee
+			T::NFTGallery::send_fee_to_market_place_owner(
+				&issuer,
+				&store_owner_address,
+				&store_id,
+			)?;
 			// Check that the collection exists
 			let collection = Self::get_collection(&issuer, &store_id, &collection_id)?;
 
@@ -496,6 +531,13 @@ pub mod pallet {
 			price: BalanceOf<T>,
 			end_date: u64,
 		) -> DispatchResult {
+			// Store Transaction Fee
+			T::NFTGallery::send_fee_to_market_place_owner(
+				&issuer,
+				&store_owner_address,
+				&store_id,
+			)?;
+
 			// Check that the collection exists
 			let collection = Self::get_collection(&issuer, &store_id, &collection_id)?;
 
@@ -543,10 +585,42 @@ pub mod pallet {
 			});
 			Ok(().into())
 		}
-
+		/// This function performs the operation of buying an NFT.
+		///
+		/// It is flagged as `transactional`, which means if any operation inside the function
+		/// fails, all changes to storage made within the function will be rolled back.
+		///
+		/// # Arguments
+		///
+		/// * `buyer` - The account identifier of the user buying the NFT.
+		/// * `nft_owner_address_id` - The account identifier of the current owner of the NFT.
+		/// * `collection_id` - The unique identifier of the collection to which the NFT belongs.
+		/// * `store_id` - The unique identifier of the store where the NFT is listed.
+		/// * `nft_id` - The unique identifier of the NFT being bought.
+		/// * `total_supply` - The total supply of the NFTs for sale.
+		///
+		/// # Returns
+		///
+		/// * `DispatchResult` - The result of the function, indicating success or failure.
+		///
+		/// # Errors
+		///
+		/// This function can return `NFTNotFound` if the NFT does not exist. It can also return
+		/// `DispatchError` when either `Currency::reserve` or `do_transfer_nft_share_profit` fails.
+		///
+		/// # Events
+		///
+		/// This function does not emit any events, but an event could be added to indicate the
+		/// successful transfer of the NFT.
+		///
+		/// # Usage
+		///
+		/// This function is used when a user wants to buy an NFT. It updates the owner of the NFT
+		/// and handles the transfer of the purchase price, including the distribution of profits
+		/// among stakeholders according to their share percentages.
 		#[transactional]
 		fn do_buy_nft(
-			buyer: T::AccountId,
+			buyer: AccountOf<T>,
 			nft_owner_address_id: AccountOf<T>,
 			collection_id: HashId<T>,
 			store_id: HashId<T>,
@@ -567,15 +641,14 @@ pub mod pallet {
 					T::Currency::reserve(&buyer, nft.price.clone())
 						.map_err(|_| DispatchError::Other("Cannot reserve balance"))?;
 
-					Self::do_transfer_nft_share_profit(
+					do_transfer_nft_share_profit::<T>(
 						&buyer,
 						&nft.share_profits,
 						&nft.price,
 						total_supply,
 					)?;
 
-					// Update the NFT.
-					let ownres = Owners::<T::AccountId> {
+					let ownres = Owners::<AccountOf<T>> {
 						address: buyer.clone(),
 						total_supply: total_supply.clone(),
 					};
@@ -594,13 +667,123 @@ pub mod pallet {
 			Self::deposit_event(Event::TransferredNFT {
 				collection_id,
 				token_id: nft_id,
-				quantity: One::one(),
+				quantity: total_supply,
+				store_id,
 				from: buyer.clone(),
 				to: buyer,
 				price: nft.price,
 			});
 
 			Ok(().into())
+		}
+
+		#[transactional]
+		fn do_sell_nft(
+			seller: AccountOf<T>,
+			buyer: AccountOf<T>,
+			collection_id: HashId<T>,
+			nft_id: HashId<T>,
+			price: BalanceOf<T>,
+			store_id: HashId<T>,
+			auction_start_price: BalanceOf<T>,
+			total_supply: u64,
+			nft_owner_address_id: AccountOf<T>,
+		) -> DispatchResult {
+			let store_info = T::NFTGallery::get_market_place_fee(&nft_owner_address_id, &store_id)?;
+
+			// Retrieve the Album.
+			NFTs::<T>::try_mutate_exists(
+				(
+					nft_owner_address_id.clone(),
+					store_id.clone(),
+					collection_id.clone(),
+					nft_id.clone(),
+				),
+				|nft_option| -> Result<_, DispatchError> {
+					let mut nft = nft_option.as_mut().ok_or(Error::<T>::NFTNotFound)?;
+
+					// Unreserve deposits of bidder and owner
+					<T as pallet::Config>::Currency::unreserve(&buyer, price);
+					<T as pallet::Config>::Currency::unreserve(&seller, auction_start_price);
+
+					// Calculate the royalty.
+					let royalty_amount =
+						calc_royalty_and_fee::<T>(nft.royalty, &price, store_info.0)?;
+
+					// The remaining amount after subtracting the royalty.
+					let remaining_amount = price.clone() - (royalty_amount.0 + royalty_amount.1);
+
+					let store_info = T::NFTGallery::send_royalty_fee_to_market_place_owner(
+						&buyer,
+						&nft_owner_address_id,
+						&store_id,
+						&royalty_amount.0,
+					)?;
+
+					// Transfer the royalty to the creator.
+					// T::Currency::transfer(
+					// 	&buyer,
+					// 	&nft.issuer,
+					// 	royalty_amount.0,
+					// 	ExistenceRequirement::KeepAlive,
+					// )?;
+
+					// T::Currency::transfer(
+					// 	&buyer,
+					// 	&nft.issuer,
+					// 	royalty_amount.1,
+					// 	ExistenceRequirement::KeepAlive,
+					// )?;
+
+					// // Transfer the remaining balance to the current owner (seller).
+					// T::Currency::transfer(
+					// 	&buyer,
+					// 	&seller,
+					// 	remaining_amount,
+					// 	ExistenceRequirement::KeepAlive,
+					// )?;
+
+					// let mut index: usize = 0;
+					// // Ensure the seller is an owner of this Album.
+					// match &mut nft.owners {
+					// 	Some(ref mut owners) => {
+					// 		index = Self::find_index_owner(&seller, owners)?;
+					// 		// If total supply reduces to zero, remove the owner.
+					// 		// NOTE: total_supply is u64 type, so no as_mut() is needed.
+					// 		owners[index].total_supply = owners[index]
+					// 			.total_supply
+					// 			.checked_sub(total_supply)
+					// 			.ok_or(Error::<T>::ArithmeticUnderflow)?;
+
+					// 		// NOTE: total_supply is u64 type, so compare with 0, not 0.0.
+					// 		if owners[index].total_supply == 0 {
+					// 			owners.remove(index);
+					// 			Self::retain_nft_owners(&seller, &collection_id, &nft_id)?;
+					// 		}
+
+					// 		// Add the buyer to the owners.
+					// 		owners.push(Owners {
+					// 			address: buyer.clone(),
+					// 			total_supply: total_supply.clone(),
+					// 		});
+					// 		Ok(())
+					// 	},
+					// 	None => Err(Error::<T>::OwnersEmpty),
+					// }?;
+
+
+					// Self::deposit_event(Event::NFTSold {
+					// 	collection_id,
+					// 	token_id: nft_id,
+					// 	price: price.clone(),
+					// 	seller: seller.clone(),
+					// 	buyer: buyer.clone(),
+					// 	royalty: nft.royalty,
+					// });
+
+					Ok(())
+				},
+			)
 		}
 	}
 }

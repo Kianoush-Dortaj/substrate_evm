@@ -1,6 +1,6 @@
 pub mod Types {
 	use crate::structs::NFTStructs::{Collection  , NFT ,ShareProfitsInfo}; // use structs // Import `NFTStructs` from the structs module
-	use crate::pallet::Config; // Import `Config` from the pallet module
+	pub use crate::pallet::Config; // Import `Config` from the pallet module
 	use frame_support::traits::Currency;
 	use frame_system::Config as SystemConfig; // Import `SystemConfig`
 

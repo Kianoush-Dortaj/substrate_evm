@@ -93,6 +93,7 @@ pub mod pallet {
 	pub trait MarketPalceHelper {
 		type MarketHash;
 		type UserAccountId;
+		type Balance;
 
 		fn send_fee_to_market_place_owner(
 			issuer: &Self::UserAccountId,
@@ -104,13 +105,25 @@ pub mod pallet {
 			store_owner: &Self::UserAccountId,
 			store_hash: &Self::MarketHash,
 			royalty_fee: u64,
-		) -> DispatchResult ;
+		) -> DispatchResult;
 
+		fn get_market_place_fee(
+			issuer: &Self::UserAccountId,
+			store_id: &Self::MarketHash,
+		) -> Result<(u64, u64), DispatchError>;
+
+		fn send_royalty_fee_to_market_place_owner(
+			issuer: &Self::UserAccountId,
+			owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+			fee: &Self::Balance,
+		) -> DispatchResult;
 	}
 
 	impl<T: Config> MarketPalceHelper for Pallet<T> {
 		type MarketHash = T::Hash;
 		type UserAccountId = T::AccountId;
+		type Balance = BalanceOf<T>;
 
 		fn send_fee_to_market_place_owner(
 			issuer: &Self::UserAccountId,
@@ -124,6 +137,26 @@ pub mod pallet {
 				&issuer,
 				&market_place_info.owner,
 				market_place_info.fee,
+				ExistenceRequirement::AllowDeath,
+			)
+			.map_err(|_| Error::<T>::ErrorTransferMarketPlaceFee)?;
+
+			Ok(())
+		}
+
+		fn send_royalty_fee_to_market_place_owner(
+			issuer: &Self::UserAccountId,
+			owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+			fee: &Self::Balance,
+		) -> DispatchResult {
+			let market_place_info = MarketplaceStorage::<T>::get(owner, store_hash)
+				.ok_or(Error::<T>::MarketNotFound)?;
+
+			let _ = T::Currency::transfer(
+				&issuer,
+				&market_place_info.owner,
+				*fee,
 				ExistenceRequirement::AllowDeath,
 			)
 			.map_err(|_| Error::<T>::ErrorTransferMarketPlaceFee)?;
@@ -146,6 +179,16 @@ pub mod pallet {
 
 			Ok(())
 		}
+
+		fn get_market_place_fee(
+			issuer: &Self::UserAccountId,
+			store_id: &Self::MarketHash,
+		) -> Result<(u64, u64), DispatchError> {
+			let market_place_info =
+				MarketplaceStorage::<T>::get(issuer, store_id).ok_or(Error::<T>::MarketNotFound)?;
+
+			Ok((market_place_info.max_royalty, market_place_info.royalty_fee))
+		}
 	}
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/main-docs/build/events-errors/
@@ -160,6 +203,7 @@ pub mod pallet {
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
 			max_royalty: u64,
+			royalty_fee: u64,
 		},
 		MarketplaceOwnerChanges {
 			old_owner: AccountOf<T>,
@@ -174,6 +218,7 @@ pub mod pallet {
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
 			max_royalty: u64,
+			royalty_fee: u64,
 		},
 	}
 
@@ -210,10 +255,19 @@ pub mod pallet {
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
 			max_royalty: u64,
+			royalty_fee: u64,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
-			Self::do_create_market_place(issuer, metadata, fee, export_fee, import_fee, max_royalty)
+			Self::do_create_market_place(
+				issuer,
+				metadata,
+				fee,
+				export_fee,
+				import_fee,
+				max_royalty,
+				royalty_fee,
+			)
 		}
 
 		#[pallet::call_index(2)]
@@ -239,6 +293,7 @@ pub mod pallet {
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
 			max_royalty: u64,
+			royalty_fee: u64,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
@@ -250,6 +305,7 @@ pub mod pallet {
 				export_fee,
 				import_fee,
 				max_royalty,
+				royalty_fee,
 			)
 		}
 	}
@@ -263,6 +319,7 @@ pub mod pallet {
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
 			max_royalty: u64,
+			royalty_fee: u64,
 		) -> DispatchResult {
 			let hash_id = T::Hashing::hash_of(&metadata);
 
@@ -275,6 +332,7 @@ pub mod pallet {
 				export_fee: export_fee.clone(),
 				import_fee: import_fee.clone(),
 				max_royalty: max_royalty.clone(),
+				royalty_fee: royalty_fee.clone(),
 			};
 
 			MarketplaceStorage::<T>::insert(issuer.clone(), hash_id.clone(), market_place);
@@ -287,6 +345,7 @@ pub mod pallet {
 				export_fee: export_fee.clone(),
 				import_fee: import_fee.clone(),
 				max_royalty: max_royalty.clone(),
+				royalty_fee: royalty_fee.clone(),
 			});
 
 			Ok(())
@@ -326,6 +385,7 @@ pub mod pallet {
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
 			max_royalty: u64,
+			royalty_fee: u64,
 		) -> DispatchResult {
 			MarketplaceStorage::<T>::try_mutate(
 				issuer.clone(),
@@ -338,6 +398,7 @@ pub mod pallet {
 							info.export_fee = export_fee.clone();
 							info.import_fee = import_fee.clone();
 							info.max_royalty = max_royalty.clone();
+							info.royalty_fee = royalty_fee.clone();
 							Ok(())
 						},
 						None => Err(Error::<T>::MarketNotFound.into()),
@@ -352,6 +413,7 @@ pub mod pallet {
 				export_fee,
 				import_fee,
 				max_royalty,
+				royalty_fee: royalty_fee.clone(),
 			});
 
 			Ok(())

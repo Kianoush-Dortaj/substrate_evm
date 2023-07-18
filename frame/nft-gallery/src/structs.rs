@@ -17,5 +17,6 @@ pub mod MarketPlaceStructs {
 		pub export_fee:Balance,
 		pub import_fee:Balance,
 		pub max_royalty:u64,
+		pub royalty_fee:u64,
 	}
 }
