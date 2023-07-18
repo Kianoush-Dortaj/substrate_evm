@@ -99,6 +99,13 @@ pub mod pallet {
 			owner: &Self::UserAccountId,
 			store_hash: &Self::MarketHash,
 		) -> DispatchResult;
+
+		fn check_allow_royalty(
+			store_owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+			royalty_fee: u64,
+		) -> DispatchResult ;
+
 	}
 
 	impl<T: Config> MarketPalceHelper for Pallet<T> {
@@ -123,6 +130,22 @@ pub mod pallet {
 
 			Ok(())
 		}
+
+		fn check_allow_royalty(
+			store_owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+			royalty_fee: u64,
+		) -> DispatchResult {
+			let market_place_info = MarketplaceStorage::<T>::get(store_owner, store_hash)
+				.ok_or(Error::<T>::MarketNotFound)?;
+
+			ensure!(
+				market_place_info.max_royalty >= royalty_fee,
+				Error::<T>::NotAllowSetRoyaltyOverThanStoreConfig
+			);
+
+			Ok(())
+		}
 	}
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/main-docs/build/events-errors/
@@ -136,12 +159,21 @@ pub mod pallet {
 			hash_id: HashId<T>,
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
+			max_royalty: u64,
 		},
 		MarketplaceOwnerChanges {
 			old_owner: AccountOf<T>,
 			new_owner: AccountOf<T>,
 			price: BalanceOf<T>,
 			hash_id: HashId<T>,
+		},
+		UpdateMarketPlace {
+			owner: AccountOf<T>,
+			fee: BalanceOf<T>,
+			hash_id: HashId<T>,
+			export_fee: BalanceOf<T>,
+			import_fee: BalanceOf<T>,
+			max_royalty: u64,
 		},
 	}
 
@@ -150,6 +182,7 @@ pub mod pallet {
 	pub enum Error<T> {
 		MarketNotFound,
 		ErrorTransferMarketPlaceFee,
+		NotAllowSetRoyaltyOverThanStoreConfig,
 	}
 
 	/// Store nft info.
@@ -176,10 +209,11 @@ pub mod pallet {
 			fee: BalanceOf<T>,
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
+			max_royalty: u64,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
-			Self::do_create_market_place(issuer, metadata, fee, export_fee, import_fee)
+			Self::do_create_market_place(issuer, metadata, fee, export_fee, import_fee, max_royalty)
 		}
 
 		#[pallet::call_index(2)]
@@ -194,6 +228,30 @@ pub mod pallet {
 
 			Self::do_change_owner(issuer, new_owner, store_hash_id, price)
 		}
+
+		#[pallet::call_index(3)]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
+		pub fn change_marketplace_info(
+			origin: OriginFor<T>,
+			store_hash_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			fee: BalanceOf<T>,
+			export_fee: BalanceOf<T>,
+			import_fee: BalanceOf<T>,
+			max_royalty: u64,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+
+			Self::do_change_marketplace_info(
+				issuer,
+				store_hash_id,
+				metadata,
+				fee,
+				export_fee,
+				import_fee,
+				max_royalty,
+			)
+		}
 	}
 
 	impl<T: Config> Pallet<T> {
@@ -204,6 +262,7 @@ pub mod pallet {
 			fee: BalanceOf<T>,
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
+			max_royalty: u64,
 		) -> DispatchResult {
 			let hash_id = T::Hashing::hash_of(&metadata);
 
@@ -215,6 +274,7 @@ pub mod pallet {
 				hash_id: hash_id.clone(),
 				export_fee: export_fee.clone(),
 				import_fee: import_fee.clone(),
+				max_royalty: max_royalty.clone(),
 			};
 
 			MarketplaceStorage::<T>::insert(issuer.clone(), hash_id.clone(), market_place);
@@ -226,6 +286,7 @@ pub mod pallet {
 				hash_id: hash_id.clone(),
 				export_fee: export_fee.clone(),
 				import_fee: import_fee.clone(),
+				max_royalty: max_royalty.clone(),
 			});
 
 			Ok(())
@@ -251,6 +312,46 @@ pub mod pallet {
 				new_owner: new_owner.clone(),
 				price,
 				hash_id: store_hash_id,
+			});
+
+			Ok(())
+		}
+
+		#[transactional]
+		pub fn do_change_marketplace_info(
+			issuer: T::AccountId,
+			store_hash_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			fee: BalanceOf<T>,
+			export_fee: BalanceOf<T>,
+			import_fee: BalanceOf<T>,
+			max_royalty: u64,
+		) -> DispatchResult {
+			MarketplaceStorage::<T>::try_mutate(
+				issuer.clone(),
+				store_hash_id.clone(),
+				|market_info| -> Result<(), DispatchError> {
+					match market_info {
+						Some(info) => {
+							info.fee = fee.clone();
+							info.metadata = metadata.clone();
+							info.export_fee = export_fee.clone();
+							info.import_fee = import_fee.clone();
+							info.max_royalty = max_royalty.clone();
+							Ok(())
+						},
+						None => Err(Error::<T>::MarketNotFound.into()),
+					}
+				},
+			)?;
+
+			Self::deposit_event(Event::UpdateMarketPlace {
+				fee,
+				owner: issuer,
+				hash_id: store_hash_id,
+				export_fee,
+				import_fee,
+				max_royalty,
 			});
 
 			Ok(())

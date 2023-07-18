@@ -2,7 +2,7 @@
 
 use codec::{alloc::vec, Decode, Encode, HasCompact, MaxEncodedLen};
 use frame_support::sp_runtime::{
-	traits::{AtLeast32BitUnsigned,Hash, CheckedAdd, Member, One},
+	traits::{AtLeast32BitUnsigned, CheckedAdd, Hash, Member, One},
 	DispatchError, SaturatedConversion,
 };
 use sp_runtime::traits::UniqueSaturatedFrom;
@@ -19,10 +19,12 @@ pub use pallet::*;
 use nft_gallery::MarketPalceHelper;
 
 pub mod structs;
-pub use structs::NFTStructs::Collection;
+pub use structs::NFTStructs::{Collection, NFT};
 
 pub mod types;
-pub use types::Types::{AccountOf, BalanceOf, CollectionDetailsOf, HashId};
+pub use types::Types::{
+	AccountOf, BalanceOf, CollectionDetailsOf, HashId, NFTDetailsOf, SahreProfitDetailsOf,
+};
 
 #[cfg(test)]
 mod mock;
@@ -72,13 +74,29 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		/// An nft Collection was created.
-		CreatedCollection { store_id: HashId<T>, collection_id: HashId<T>, issuer: AccountOf<T> },
+		CreatedCollection {
+			store_id: HashId<T>,
+			collection_id: HashId<T>,
+			issuer: AccountOf<T>,
+		},
+		UpdateCollection {
+			store_id: HashId<T>,
+			collection_id: HashId<T>,
+			issuer: AccountOf<T>,
+		},
+		MintedNFT {
+			store_id: HashId<T>,
+			collection_id: HashId<T>,
+			issuer: AccountOf<T>,
+			nft_id: HashId<T>,
+		},
 	}
 
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
 		CollectionNotFound,
+		YouAreNotPwnerOfCollection,
 	}
 
 	/// Store collection info.
@@ -96,8 +114,28 @@ pub mod pallet {
 		OptionQuery,
 	>;
 
+	/// Store NFT info.
+	#[pallet::storage]
+	#[pallet::unbounded]
+	#[pallet::getter(fn nfts)]
+	pub(super) type NFTs<T: Config> = StorageNMap<
+		_,
+		(
+			NMapKey<Twox64Concat, AccountOf<T>>,
+			NMapKey<Twox64Concat, HashId<T>>,
+			NMapKey<Twox64Concat, HashId<T>>,
+			NMapKey<Twox64Concat, HashId<T>>,
+		),
+		NFTDetailsOf<T>,
+		OptionQuery,
+	>;
+
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
+		// Define the `create_collection` call for the pallet
+		// This function allows a user to create a new collection of NFTs
+		// It takes in the metadata of the collection, the address of the market owner, and the
+		// unique identifier for the store
 		#[pallet::call_index(0)]
 		#[pallet::weight(T::PalletWeightInfo::do_something())]
 		pub fn create_collection(
@@ -115,16 +153,123 @@ pub mod pallet {
 
 			Self::do_create_collection(issuer, metadata, store_hash_id)
 		}
+		// Define the `update_collection` call for the pallet
+		// This function allows a user to update an existing collection of NFTs
+		// It takes in the updated metadata of the collection, the address of the market owner, and
+		// the unique identifier for the store
+		#[pallet::call_index(1)]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
+		pub fn update_collection(
+			origin: OriginFor<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			market_owner_address: AccountOf<T>,
+			store_hash_id: HashId<T>,
+			collection_hash_id: HashId<T>,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+			T::NFTGallery::send_fee_to_market_place_owner(
+				&issuer,
+				&market_owner_address,
+				&store_hash_id,
+			)?;
+
+			Self::do_update_collection(issuer, metadata, store_hash_id, collection_hash_id)
+		}
+
+		#[pallet::call_index(2)]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
+		pub fn mint_nft(
+			origin: OriginFor<T>,
+			store_owner_address: AccountOf<T>,
+			collection_id: HashId<T>,
+			store_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			royalty: u64,
+			share_profits: Vec<SahreProfitDetailsOf<T>>,
+			price: BalanceOf<T>,
+			end_date: u64,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+
+			Self::do_mint_nft(
+				issuer,
+				store_owner_address,
+				collection_id,
+				store_id,
+				metadata,
+				royalty,
+				share_profits,
+				price,
+				end_date,
+			)
+		}
 	}
 
 	impl<T: Config> Pallet<T> {
+		/// This function retrieves the details of a specified collection from the storage.
+		///
+		/// # Arguments
+		///
+		/// * `owner` - The account identifier of the collection owner.
+		/// * `store_id` - The unique identifier of the store that the collection belongs to.
+		/// * `collection_id` - The unique identifier of the collection.
+		///
+		/// # Returns
+		///
+		/// * `Result<CollectionDetailsOf<T>, Error<T>>` - If the collection is found in the
+		///   storage, the function will return a `CollectionDetailsOf<T>` struct, containing the
+		///   details of the collection. If the collection cannot be found, the function will return
+		///   an `Error<T>` with the `CollectionNotFound` error.
+		///
+		/// # Storage Access
+		///
+		/// This function accesses the `Collections<T>` storage item. It first constructs a tuple
+		/// key with the owner's account id, store id and collection id, and uses this key to try to
+		/// get the collection details from the storage. If no value is found, it will return an
+		/// error indicating that the collection was not found.
+		pub(crate) fn get_collection(
+			owner: &T::AccountId,
+			store_id: &HashId<T>,
+			collection_id: &HashId<T>,
+		) -> Result<CollectionDetailsOf<T>, Error<T>> {
+			<Collections<T>>::get((owner.clone(), store_id.clone(), collection_id.clone()))
+				.ok_or(Error::<T>::CollectionNotFound)
+		}
+		/// This is a private method that carries out the process of creating a new NFT collection.
+		///
+		/// # Arguments
+		///
+		/// * `issuer` - The account identifier of the user who is creating the NFT collection.
+		/// * `metadata` - The metadata for the collection, limited in size by `ConstU32<32>`.
+		/// * `store_hash_id` - The unique identifier of the store where the collection will be
+		///   listed.
+		///
+		/// # Returns
+		///
+		/// * `DispatchResult` - The result of the function, indicating success or failure.
+		///
+		/// # Process
+		///
+		/// The function creates a unique hash for the collection based on its metadata, builds a
+		/// `Collection` struct with the hash, metadata and issuer, and then inserts this struct
+		/// into the `Collections` storage map.
+		///
+		/// # Events
+		///
+		/// This function emits a `CreatedCollection` event upon successfully creating a new
+		/// collection.
+		///
+		/// # Transactional
+		///
+		/// This function is flagged as `transactional`. If it fails, all changes to storage will be
+		/// rolled back.
+
 		#[transactional]
 		fn do_create_collection(
 			issuer: T::AccountId,
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			store_hash_id: HashId<T>,
 		) -> DispatchResult {
-
 			let collection_hash_id = T::Hashing::hash_of(&metadata);
 
 			let collection_details = Collection {
@@ -134,9 +279,7 @@ pub mod pallet {
 			};
 
 			Collections::<T>::insert(
-				issuer.clone(),
-				collection_hash_id.clone(),
-				store_hash_id.clone(),
+				(issuer.clone(), collection_hash_id.clone(), store_hash_id.clone()),
 				collection_details.clone(),
 			);
 
@@ -144,6 +287,143 @@ pub mod pallet {
 				store_id: store_hash_id,
 				collection_id: collection_hash_id,
 				issuer: issuer.clone(),
+			});
+			Ok(().into())
+		}
+		/// This is a private method that carries out the process of updating an existing NFT
+		/// collection's metadata.
+		///
+		/// # Arguments
+		///
+		/// * `issuer` - The account identifier of the user who issued the NFT collection.
+		/// * `metadata` - The new metadata for the collection, limited in size by `ConstU32<32>`.
+		/// * `store_hash_id` - The unique identifier of the store where the collection is listed.
+		/// * `collection_hash_id` - The unique identifier of the collection that is to be updated.
+		///
+		/// # Returns
+		///
+		/// * `DispatchResult` - The result of the function, indicating success or failure.
+		///
+		/// # Errors
+		///
+		/// This function will return `CollectionNotFound` if the referenced collection does not
+		/// exist.
+		///
+		/// # Events
+		///
+		/// This function emits an `UpdateCollection` event upon successfully updating the
+		/// collection's metadata.
+		///
+		/// # Transactional
+		///
+		/// This function is flagged as `transactional`. If it fails, all changes to storage will be
+		/// rolled back.
+		#[transactional]
+		#[transactional]
+		fn do_update_collection(
+			issuer: T::AccountId,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			store_hash_id: HashId<T>,
+			collection_hash_id: HashId<T>,
+		) -> DispatchResult {
+			Collections::<T>::try_mutate(
+				(issuer.clone(), collection_hash_id.clone(), store_hash_id.clone()),
+				|collection_info| -> Result<(), DispatchError> {
+					match collection_info {
+						Some(info) => {
+							info.metadata = metadata.clone();
+							Ok(())
+						},
+						None => Err(Error::<T>::CollectionNotFound.into()),
+					}
+				},
+			)?;
+
+			Self::deposit_event(Event::UpdateCollection {
+				store_id: store_hash_id,
+				collection_id: collection_hash_id,
+				issuer: issuer.clone(),
+			});
+			Ok(().into())
+		}
+		/// This is a private method that carries out the process of minting a Non-Fungible Token
+		/// (NFT).
+		///
+		/// # Arguments
+		///
+		/// * `issuer` - The account identifier of the user issuing the NFT.
+		/// * `store_owner_address` - The account identifier of the store owner where the NFT will
+		///   be listed.
+		/// * `collection_id` - The unique identifier of the collection to which this NFT belongs.
+		/// * `store_id` - The unique identifier of the store where the NFT will be listed.
+		/// * `metadata` - The metadata associated with the NFT, limited in size by `ConstU32<32>`.
+		/// * `royalty` - The royalty percentage for any future sales of the NFT.
+		/// * `share_profits` - The details of how profits will be shared, likely among multiple
+		///   stakeholders.
+		/// * `price` - The price at which the NFT will be listed.
+		/// * `end_date` - The end date for the listing of the NFT.
+		///
+		/// # Returns
+		///
+		/// * `DispatchResult` - The result of the function, indicating success or failure.
+		///
+		/// # Errors
+		///
+		/// This function can return `CollectionNotFound` if the referenced collection does not
+		/// exist. It can also return `YouAreNotPwnerOfCollection` if the issuer is not the owner of
+		/// the collection. Additionally, it will fail if `check_allow_royalty` fails for the given
+		/// `store_owner_address` and `store_id`.
+		///
+		/// # Events
+		///
+		/// This function emits a `MintedNFT` event upon successfully minting an NFT.
+		///
+		/// # Transactional
+		///
+		/// This function is flagged as `transactional`. If it fails, all changes to storage will be
+		/// rolled back.
+		#[transactional]
+		fn do_mint_nft(
+			issuer: AccountOf<T>,
+			store_owner_address: AccountOf<T>,
+			collection_id: HashId<T>,
+			store_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			royalty: u64,
+			share_profits: Vec<SahreProfitDetailsOf<T>>,
+			price: BalanceOf<T>,
+			end_date: u64,
+		) -> DispatchResult {
+			// Check that the collection exists
+			let collection = Self::get_collection(&issuer, &store_id, &collection_id)?;
+
+			ensure!(collection.issuer == issuer, Error::<T>::YouAreNotPwnerOfCollection);
+			T::NFTGallery::check_allow_royalty(&store_owner_address, &store_id, royalty.clone())?;
+
+			// Create the NFT instance
+			let nft_details = NFT {
+				metadata: metadata.clone(),
+				issuer: issuer.clone(),
+				royalty,
+				owners: Some(vec![]),
+				share_profits,
+				price,
+				end_date,
+			};
+
+			let nft_hash_id = T::Hashing::hash_of(&metadata);
+			// Insert the NFT instance to the NFTs storage
+			NFTs::<T>::insert(
+				(issuer.clone(), store_id.clone(), collection_id.clone(), nft_hash_id.clone()),
+				nft_details,
+			);
+
+			// Emit the MintedNFT event
+			Self::deposit_event(Event::MintedNFT {
+				collection_id,
+				issuer: issuer.clone(),
+				store_id: store_id.clone(),
+				nft_id: nft_hash_id.clone(),
 			});
 			Ok(().into())
 		}

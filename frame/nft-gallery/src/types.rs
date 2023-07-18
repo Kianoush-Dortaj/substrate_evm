@@ -1,5 +1,5 @@
 pub mod Types {
-	use super::super::structs::NFTStructs; // Import `NFTStructs` from the structs module
+	use super::super::structs::MarketPlaceStructs; // Import `NFTStructs` from the structs module
 	use crate::pallet::Config; // Import `Config` from the pallet module
 	use frame_support::traits::Currency;
 	use frame_system::Config as SystemConfig; // Import `SystemConfig`
@@ -11,5 +11,5 @@ pub mod Types {
 
 	pub type HashId<T> = <T as frame_system::Config>::Hash;
 
-	pub type MarketPlace<T> = NFTStructs::Marketplace<AccountOf<T>, BalanceOf<T>, HashId<T>>;
+	pub type MarketPlace<T> = MarketPlaceStructs::Marketplace<AccountOf<T>, BalanceOf<T>, HashId<T>>;
 }

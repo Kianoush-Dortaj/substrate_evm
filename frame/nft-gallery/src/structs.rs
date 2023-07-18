@@ -16,5 +16,6 @@ pub mod MarketPlaceStructs {
 		pub hash_id: Hash,
 		pub export_fee:Balance,
 		pub import_fee:Balance,
+		pub max_royalty:u64,
 	}
 }
