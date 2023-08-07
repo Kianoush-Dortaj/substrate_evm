@@ -1707,21 +1707,15 @@ impl pallet_nfts::Config for Runtime {
 
 impl new_nft::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
-	type PalletWeightInfo = new_nft::weights::SubstrateWeight<Runtime>;
-	type Currency = Balances;
+	type NFTPalletWeightInfo = new_nft::weights::SubstrateWeight<Runtime>;
+	type NFTCurrency = Balances;
 	type NFTGallery = nft_gallery::Pallet<Runtime>;
 }
 
 impl nft_gallery::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type PalletWeightInfo = nft_gallery::weights::SubstrateWeight<Runtime>;
-	type Quantity = u64;
-	type NFTId = u64;
-	type CollectionId = u64;
 	type Currency = Balances;
-	type CollectionNFTDeposit = NFTCollectionDeposit;
-	type NFTDeposit = NFTDeposit;
-	type MetaDataByteDeposit = MetaDataByteDeposit;
 }
 
 parameter_types! {
@@ -1752,12 +1746,12 @@ impl pallet_uniques::Config for Runtime {
 	type Locker = ();
 }
 
-impl pallet_acn::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-	type WeightInfo = pallet_acn::weights::SubstrateWeight<Runtime>;
-	type Currency = Balances;
-	type NFTsPallet = pallet_nfts::Pallet<Runtime>;
-}
+// impl pallet_acn::Config for Runtime {
+// 	type RuntimeEvent = RuntimeEvent;
+// 	type WeightInfo = pallet_acn::weights::SubstrateWeight<Runtime>;
+// 	type Currency = Balances;
+// 	type NFTsPallet = new_nft::Pallet<Runtime>;
+// }
 
 impl pallet_transaction_storage::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
@@ -1930,7 +1924,7 @@ construct_runtime!(
 		FastUnstake: pallet_fast_unstake,
 		MessageQueue: pallet_message_queue,
 		NFT:pallet_nfts,
-		ACN:pallet_acn,
+		// ACN:pallet_acn,
 		Gallery:nft_gallery,
 		NewNFT:new_nft,
 

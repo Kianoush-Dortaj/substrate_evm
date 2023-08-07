@@ -15,7 +15,6 @@ use frame_support::{
 	transactional, Twox64Concat,
 };
 use frame_system::Config as SystemConfig;
-pub use pallet::*;
 use sp_runtime::traits::UniqueSaturatedFrom;
 
 #[cfg(test)]
@@ -45,49 +44,13 @@ pub mod pallet {
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
-	pub trait Config: frame_system::Config + pallet_timestamp::Config {
+	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 		/// Type representing the weight of this pallet
 		type PalletWeightInfo: WeightInfo;
 		/// The currency mechanism, used for paying for reserves.
 		type Currency: ReservableCurrency<Self::AccountId>;
-		/// Nft quantity
-		type Quantity: Member
-			+ Parameter
-			+ Default
-			+ Copy
-			+ HasCompact
-			+ AtLeast32BitUnsigned
-			+ MaxEncodedLen;
-
-		type NFTId: Member
-			+ Parameter
-			+ Default
-			+ Copy
-			+ HasCompact
-			+ AtLeast32BitUnsigned
-			+ MaxEncodedLen;
-
-		type CollectionId: Member
-			+ Parameter
-			+ Default
-			+ Copy
-			+ HasCompact
-			+ AtLeast32BitUnsigned
-			+ MaxEncodedLen;
-
-		/// The basic amount of funds that must be reserved for an asset class.
-		#[pallet::constant]
-		type CollectionNFTDeposit: Get<BalanceOf<Self>>;
-
-		/// The basic amount of funds that must be reserved for an asset instance.
-		#[pallet::constant]
-		type NFTDeposit: Get<BalanceOf<Self>>;
-
-		/// The basic amount of funds that must be reserved for an asset instance.
-		#[pallet::constant]
-		type MetaDataByteDeposit: Get<BalanceOf<Self>>;
 	}
 
 	pub trait MarketPalceHelper {
@@ -123,7 +86,8 @@ pub mod pallet {
 	impl<T: Config> MarketPalceHelper for Pallet<T> {
 		type MarketHash = T::Hash;
 		type UserAccountId = T::AccountId;
-		type Balance = BalanceOf<T>;
+		type Balance =
+			<<T as Config>::Currency as Currency<<T as SystemConfig>::AccountId>>::Balance;
 
 		fn send_fee_to_market_place_owner(
 			issuer: &Self::UserAccountId,
@@ -363,6 +327,13 @@ pub mod pallet {
 
 			let mut new_market_info = market_info;
 			new_market_info.owner = new_owner.clone();
+
+			T::Currency::transfer(
+				&new_owner,
+				&original_owner,
+				price,
+				ExistenceRequirement::KeepAlive,
+			)?;
 
 			MarketplaceStorage::<T>::insert(&new_owner, &store_hash_id, new_market_info.clone());
 

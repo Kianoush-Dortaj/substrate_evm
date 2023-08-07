@@ -1,11 +1,12 @@
 pub mod Types {
-	use crate::structs::NFTStructs::{Collection  , NFT ,ShareProfitsInfo}; // use structs // Import `NFTStructs` from the structs module
 	pub use crate::pallet::Config; // Import `Config` from the pallet module
+	use crate::structs::NFTStructs::{Collection, ShareProfitsInfo, NFT}; /* use structs // Import `NFTStructs` from the structs
+																	  * module */
 	use frame_support::traits::Currency;
 	use frame_system::Config as SystemConfig; // Import `SystemConfig`
 
 	pub type BalanceOf<T> =
-		<<T as Config>::Currency as Currency<<T as SystemConfig>::AccountId>>::Balance;
+		<<T as Config>::NFTCurrency as Currency<<T as SystemConfig>::AccountId>>::Balance;
 
 	pub type HashId<T> = <T as frame_system::Config>::Hash;
 

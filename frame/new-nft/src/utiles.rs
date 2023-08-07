@@ -102,7 +102,7 @@ pub mod Utility {
 				calc_transfer_amount_with_percentage::<T>(*price, total_supply, info.percentage);
 
 			// Use the transfer function
-			T::Currency::transfer(
+			T::NFTCurrency::transfer(
 				&buyer,
 				&info.owner_address,
 				amount_to_transfer,

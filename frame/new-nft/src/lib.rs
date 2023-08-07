@@ -12,10 +12,9 @@ use frame_support::{
 	traits::{Currency, ExistenceRequirement, Get, ReservableCurrency},
 	transactional, Twox64Concat,
 };
-use frame_system::Config as SystemConfig;
-pub use pallet::*;
+use nft_gallery::pallet::MarketPalceHelper;
 
-use nft_gallery::MarketPalceHelper;
+pub use pallet::*;
 
 pub mod structs;
 pub use structs::NFTStructs::{Collection, Owners, NFT};
@@ -48,18 +47,103 @@ pub mod pallet {
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
-	pub trait Config: frame_system::Config + pallet_timestamp::Config {
+	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 		/// Type representing the weight of this pallet
-		type PalletWeightInfo: WeightInfo;
+		type NFTPalletWeightInfo: WeightInfo;
 		/// The currency mechanism, used for paying for reserves.
-		type Currency: ReservableCurrency<Self::AccountId>;
+		type NFTCurrency: ReservableCurrency<Self::AccountId>;
 
-		type NFTGallery: nft_gallery::MarketPalceHelper<
+		type NFTGallery: MarketPalceHelper<
 			MarketHash = Self::Hash,
 			UserAccountId = Self::AccountId,
+			Balance = BalanceOf<Self>,
 		>;
+	}
+
+	pub trait NFTHelper {
+		type AccountId;
+		type CollectionId;
+		type NFTId;
+		type Balance;
+		type HashId;
+
+		fn has_permission_to_add_nft_in_auction(
+			nft_owner: &Self::AccountId,
+			bidder: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+			store_id: &Self::NFTId,
+			total_supply: u64,
+		) -> DispatchResult;
+
+		fn sell_nft(
+			nft_owner: &Self::AccountId,
+			store_id: &Self::HashId,
+			seller: &Self::AccountId,
+			buyer: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+			price_input: u64,
+			auction_start_price_input: u64,
+			total_supply_input: u64,
+		) -> DispatchResult;
+	}
+
+	impl<T: Config> NFTHelper for Pallet<T> {
+		type AccountId = AccountOf<T>;
+		type CollectionId = HashId<T>;
+		type NFTId = HashId<T>;
+		type HashId = HashId<T>;
+		type Balance = BalanceOf<T>;
+
+		fn has_permission_to_add_nft_in_auction(
+			nft_owner: &Self::AccountId,
+			bidder: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+			store_id: &Self::HashId,
+			total_supply: u64,
+		) -> DispatchResult {
+			Self::has_permission_add_nft_in_auction(
+				&nft_owner,
+				&bidder,
+				&collection_id,
+				&nft_id,
+				store_id,
+				total_supply,
+			)
+		}
+
+		fn sell_nft(
+			nft_owner: &Self::AccountId,
+			store_id: &Self::HashId,
+			seller: &Self::AccountId,
+			buyer: &Self::AccountId,
+			collection_id: &Self::CollectionId,
+			nft_id: &Self::NFTId,
+			price_input: u64,
+			auction_start_price_input: u64,
+			total_supply: u64,
+		) -> DispatchResult {
+			let price: BalanceOf<T> = price_input.saturated_into::<BalanceOf<T>>();
+
+			let auction_start_price: BalanceOf<T> =
+				auction_start_price_input.saturated_into::<BalanceOf<T>>();
+
+			Self::do_sell_nft(
+				seller.clone(),
+				buyer.clone(),
+				collection_id.clone(),
+				nft_id.clone(),
+				price,
+				store_id.clone(),
+				auction_start_price,
+				total_supply,
+				nft_owner.clone(),
+			)
+		}
 	}
 
 	// The pallet's runtime storage items.
@@ -92,6 +176,15 @@ pub mod pallet {
 			issuer: AccountOf<T>,
 			nft_id: HashId<T>,
 		},
+		NFTSold {
+			collection_id: HashId<T>,
+			token_id: HashId<T>,
+			price: BalanceOf<T>,
+			seller: AccountOf<T>,
+			buyer: AccountOf<T>,
+			royalty: u64,
+			store_id: HashId<T>,
+		},
 		UpdateNFT {
 			store_id: HashId<T>,
 			collection_id: HashId<T>,
@@ -117,7 +210,11 @@ pub mod pallet {
 		NFTNotFound,
 		InvalidPercentageSum,
 		NFTHasOwner,
+		OwnerNotFound,
+		OwnersEmpty,
+		ArithmeticUnderflow,
 		YouAreNotOwner,
+		OwnerNotHaveEnoughTotalSupply,
 	}
 
 	/// Store collection info.
@@ -158,7 +255,7 @@ pub mod pallet {
 		// It takes in the metadata of the collection, the address of the market owner, and the
 		// unique identifier for the store
 		#[pallet::call_index(0)]
-		#[pallet::weight(T::PalletWeightInfo::do_something())]
+		#[pallet::weight(T::NFTPalletWeightInfo::do_something())]
 		pub fn create_collection(
 			origin: OriginFor<T>,
 			metadata: BoundedVec<u8, ConstU32<32>>,
@@ -174,7 +271,7 @@ pub mod pallet {
 		// It takes in the updated metadata of the collection, the address of the market owner, and
 		// the unique identifier for the store
 		#[pallet::call_index(1)]
-		#[pallet::weight(T::PalletWeightInfo::do_something())]
+		#[pallet::weight(T::NFTPalletWeightInfo::do_something())]
 		pub fn update_collection(
 			origin: OriginFor<T>,
 			metadata: BoundedVec<u8, ConstU32<32>>,
@@ -199,7 +296,7 @@ pub mod pallet {
 		}
 
 		#[pallet::call_index(2)]
-		#[pallet::weight(T::PalletWeightInfo::do_something())]
+		#[pallet::weight(T::NFTPalletWeightInfo::do_something())]
 		pub fn mint_nft(
 			origin: OriginFor<T>,
 			store_owner_address: AccountOf<T>,
@@ -228,6 +325,38 @@ pub mod pallet {
 	}
 
 	impl<T: Config> Pallet<T> {
+		pub(crate) fn has_permission_add_nft_in_auction(
+			nft_owner: &AccountOf<T>,
+			bidder: &AccountOf<T>,
+			collection_id: &HashId<T>,
+			nft_id: &HashId<T>,
+			store_id: &HashId<T>,
+			total_supply: u64,
+		) -> DispatchResult {
+			Self::get_collection(&nft_owner, &store_id, &collection_id)?;
+
+			let find_nft = Self::get_nft(&nft_owner, &collection_id, &nft_id, store_id)?;
+
+			if let Some(owners) = find_nft.owners {
+				Self::check_owner_hash_enogh_total_suppply(&bidder, &owners, total_supply)?;
+			}
+
+			Ok(().into())
+		}
+
+		pub(crate) fn check_owner_hash_enogh_total_suppply(
+			seller: &T::AccountId,
+			owners: &Vec<Owners<T::AccountId>>,
+			total_supply: u64,
+		) -> Result<usize, Error<T>> {
+			let user_id = owners
+				.iter()
+				.position(|x| x.address == *seller && x.total_supply >= total_supply)
+				.ok_or(Error::<T>::OwnerNotHaveEnoughTotalSupply);
+
+			user_id
+		}
+
 		/// This function retrieves the details of a specified collection from the storage.
 		///
 		/// # Arguments
@@ -250,13 +379,27 @@ pub mod pallet {
 		/// get the collection details from the storage. If no value is found, it will return an
 		/// error indicating that the collection was not found.
 		pub(crate) fn get_collection(
-			owner: &T::AccountId,
+			collection_owner: &AccountOf<T>,
 			store_id: &HashId<T>,
 			collection_id: &HashId<T>,
 		) -> Result<CollectionDetailsOf<T>, Error<T>> {
-			<Collections<T>>::get((owner.clone(), store_id.clone(), collection_id.clone()))
-				.ok_or(Error::<T>::CollectionNotFound)
+			<Collections<T>>::get((
+				collection_owner.clone(),
+				store_id.clone(),
+				collection_id.clone(),
+			))
+			.ok_or(Error::<T>::CollectionNotFound)
 		}
+
+		pub(crate) fn get_nft(
+			owner: &AccountOf<T>,
+			collection_id: &HashId<T>,
+			nft_id: &HashId<T>,
+			store_id: &HashId<T>,
+		) -> Result<NFTDetailsOf<T>, Error<T>> {
+			<NFTs<T>>::get((owner, store_id, collection_id, nft_id)).ok_or(Error::<T>::NFTNotFound)
+		}
+
 		/// This is a private method that carries out the process of creating a new NFT collection.
 		///
 		/// # Arguments
@@ -638,7 +781,7 @@ pub mod pallet {
 					let mut nft = nft_option.as_mut().ok_or(Error::<T>::NFTNotFound)?;
 
 					// Reserve the buyer's balance.
-					T::Currency::reserve(&buyer, nft.price.clone())
+					T::NFTCurrency::reserve(&buyer, nft.price.clone())
 						.map_err(|_| DispatchError::Other("Cannot reserve balance"))?;
 
 					do_transfer_nft_share_profit::<T>(
@@ -676,7 +819,43 @@ pub mod pallet {
 
 			Ok(().into())
 		}
-
+		/// This `do_sell_nft` function performs the sale of a Non-Fungible Token (NFT) on a
+		/// marketplace. This function is tagged with `#[transactional]` which ensures that state
+		/// changes are reverted in case of an error.
+		///
+		/// # Arguments
+		///
+		/// * `seller` - An AccountId representing the seller of the NFT.
+		/// * `buyer` - An AccountId representing the buyer of the NFT.
+		/// * `collection_id` - An identifier for the NFT collection to which the NFT belongs.
+		/// * `nft_id` - An identifier for the NFT being sold.
+		/// * `price` - The selling price of the NFT.
+		/// * `store_id` - An identifier for the marketplace store.
+		/// * `auction_start_price` - The starting price of the NFT for auction.
+		/// * `total_supply` - The total supply of the NFT.
+		/// * `nft_owner_address_id` - The AccountId of the NFT owner.
+		///
+		/// # Returns
+		///
+		/// * On success, it returns `Ok(())`.
+		/// * On failure, it returns an Err wrapped in DispatchError.
+		///
+		/// # Errors
+		///
+		/// This function will return an error if:
+		/// 1. There is a problem getting the market place fee.
+		/// 2. The NFT does not exist.
+		/// 3. There is an underflow when calculating the total supply.
+		/// 4. The seller is not an owner of the NFT.
+		/// 5. There is an error when transferring the currency.
+		///
+		/// # Events
+		///
+		/// This function will deposit an `NFTSold` event upon successful sale of the NFT.
+		///
+		/// # Panics
+		///
+		/// This function does not panic.
 		#[transactional]
 		fn do_sell_nft(
 			seller: AccountOf<T>,
@@ -689,7 +868,7 @@ pub mod pallet {
 			total_supply: u64,
 			nft_owner_address_id: AccountOf<T>,
 		) -> DispatchResult {
-			let store_info = T::NFTGallery::get_market_place_fee(&nft_owner_address_id, &store_id)?;
+			let store_info = T::NFTGallery::get_market_place_fee(&buyer, &store_id)?;
 
 			// Retrieve the Album.
 			NFTs::<T>::try_mutate_exists(
@@ -703,8 +882,8 @@ pub mod pallet {
 					let mut nft = nft_option.as_mut().ok_or(Error::<T>::NFTNotFound)?;
 
 					// Unreserve deposits of bidder and owner
-					<T as pallet::Config>::Currency::unreserve(&buyer, price);
-					<T as pallet::Config>::Currency::unreserve(&seller, auction_start_price);
+					<T as pallet::Config>::NFTCurrency::unreserve(&buyer, price);
+					<T as pallet::Config>::NFTCurrency::unreserve(&seller, auction_start_price);
 
 					// Calculate the royalty.
 					let royalty_amount =
@@ -720,70 +899,99 @@ pub mod pallet {
 						&royalty_amount.0,
 					)?;
 
-					// Transfer the royalty to the creator.
-					// T::Currency::transfer(
-					// 	&buyer,
-					// 	&nft.issuer,
-					// 	royalty_amount.0,
-					// 	ExistenceRequirement::KeepAlive,
-					// )?;
+					T::NFTCurrency::transfer(
+						&buyer,
+						&nft.issuer,
+						royalty_amount.1,
+						ExistenceRequirement::KeepAlive,
+					)?;
 
-					// T::Currency::transfer(
-					// 	&buyer,
-					// 	&nft.issuer,
-					// 	royalty_amount.1,
-					// 	ExistenceRequirement::KeepAlive,
-					// )?;
+					// Transfer the remaining balance to the current owner (seller).
+					T::NFTCurrency::transfer(
+						&buyer,
+						&seller,
+						remaining_amount,
+						ExistenceRequirement::KeepAlive,
+					)?;
 
-					// // Transfer the remaining balance to the current owner (seller).
-					// T::Currency::transfer(
-					// 	&buyer,
-					// 	&seller,
-					// 	remaining_amount,
-					// 	ExistenceRequirement::KeepAlive,
-					// )?;
+					let mut index: usize = 0;
+					// Ensure the seller is an owner of this Album.
+					match &mut nft.owners {
+						Some(ref mut owners) => {
+							index = Self::find_index_owner(&seller, owners)?;
+							// If total supply reduces to zero, remove the owner.
+							// NOTE: total_supply is u64 type, so no as_mut() is needed.
+							owners[index].total_supply = owners[index]
+								.total_supply
+								.checked_sub(total_supply)
+								.ok_or(Error::<T>::ArithmeticUnderflow)?;
+							// Add the buyer to the owners.
+							owners.push(Owners {
+								address: buyer.clone(),
+								total_supply: total_supply.clone(),
+							});
+							Ok(())
+						},
+						None => Err(Error::<T>::OwnersEmpty),
+					}?;
 
-					// let mut index: usize = 0;
-					// // Ensure the seller is an owner of this Album.
-					// match &mut nft.owners {
-					// 	Some(ref mut owners) => {
-					// 		index = Self::find_index_owner(&seller, owners)?;
-					// 		// If total supply reduces to zero, remove the owner.
-					// 		// NOTE: total_supply is u64 type, so no as_mut() is needed.
-					// 		owners[index].total_supply = owners[index]
-					// 			.total_supply
-					// 			.checked_sub(total_supply)
-					// 			.ok_or(Error::<T>::ArithmeticUnderflow)?;
-
-					// 		// NOTE: total_supply is u64 type, so compare with 0, not 0.0.
-					// 		if owners[index].total_supply == 0 {
-					// 			owners.remove(index);
-					// 			Self::retain_nft_owners(&seller, &collection_id, &nft_id)?;
-					// 		}
-
-					// 		// Add the buyer to the owners.
-					// 		owners.push(Owners {
-					// 			address: buyer.clone(),
-					// 			total_supply: total_supply.clone(),
-					// 		});
-					// 		Ok(())
-					// 	},
-					// 	None => Err(Error::<T>::OwnersEmpty),
-					// }?;
-
-
-					// Self::deposit_event(Event::NFTSold {
-					// 	collection_id,
-					// 	token_id: nft_id,
-					// 	price: price.clone(),
-					// 	seller: seller.clone(),
-					// 	buyer: buyer.clone(),
-					// 	royalty: nft.royalty,
-					// });
+					Self::deposit_event(Event::NFTSold {
+						collection_id,
+						token_id: nft_id,
+						price: price.clone(),
+						seller: seller.clone(),
+						buyer: buyer.clone(),
+						store_id: store_id.clone(),
+						royalty: nft.royalty,
+					});
 
 					Ok(())
 				},
 			)
+		}
+
+		/// The `find_index_owner` function is a method for finding the index of a specific owner
+		/// within a vector of owners.
+		///
+		/// # Arguments
+		///
+		/// * `seller` - A reference to an AccountId representing the owner we want to find.
+		/// * `owners` - A reference to a vector of owners from which we are searching.
+		///
+		/// # Returns
+		///
+		/// * On success, it returns `Ok(usize)` where `usize` is the index of the `seller` in the
+		///   `owners` vector.
+		/// * On failure, when the seller is not found in the `owners` vector, it returns
+		///   `Err(Error::<T>::OwnerNotFound)`.
+		///
+		/// # Errors
+		///
+		/// This function will return an `Error::<T>::OwnerNotFound` if the `seller` is not found in
+		/// the `owners` vector.
+		///
+		/// # Example
+		///
+		/// ```
+		/// let seller = AccountId::from([0; 32]);
+		/// let owners = vec![Owners::new(AccountId::from([0; 32])), Owners::new(AccountId::from([1; 32]))];
+		/// let result = find_index_owner(&seller, &owners);
+		/// assert_eq!(result, Ok(0));
+		/// ```
+		///
+		/// # Panics
+		///
+		/// This function does not panic.
+		pub(crate) fn find_index_owner(
+			seller: &T::AccountId,
+			owners: &Vec<Owners<T::AccountId>>,
+		) -> Result<usize, Error<T>> {
+			let user_id = owners
+				.iter()
+				.position(|x| x.address == *seller)
+				.ok_or(Error::<T>::OwnerNotFound);
+
+			user_id
 		}
 	}
 }

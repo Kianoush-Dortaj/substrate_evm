@@ -4670,6 +4670,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+ "utility",
 ]
 
 [[package]]
@@ -4732,7 +4733,6 @@ dependencies = [
  "new-nft",
  "nft-gallery",
  "node-primitives",
- "pallet-acn",
  "pallet-alliance",
  "pallet-asset-tx-payment",
  "pallet-assets",
@@ -4770,7 +4770,6 @@ dependencies = [
  "pallet-message-queue",
  "pallet-mmr",
  "pallet-multisig",
- "pallet-nfts",
  "pallet-nis",
  "pallet-nomination-pools",
  "pallet-nomination-pools-benchmarking",
@@ -5331,25 +5330,6 @@ name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
-
-[[package]]
-name = "pallet-acn"
-version = "4.0.0-dev"
-dependencies = [
- "frame-support",
- "frame-system",
- "log",
- "pallet-balances",
- "pallet-nfts",
- "pallet-timestamp",
- "parity-scale-codec",
- "scale-info",
- "sp-arithmetic",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "sp-std",
-]
 
 [[package]]
 name = "pallet-alliance"
@@ -6248,25 +6228,6 @@ dependencies = [
  "pallet-balances",
  "parity-scale-codec",
  "scale-info",
- "sp-core",
- "sp-io",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-nfts"
-version = "0.0.1"
-dependencies = [
- "frame-support",
- "frame-system",
- "log",
- "nft-gallery",
- "pallet-balances",
- "pallet-timestamp",
- "parity-scale-codec",
- "scale-info",
- "sp-arithmetic",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -11803,6 +11764,21 @@ name = "utf8parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
+
+[[package]]
+name = "utility"
+version = "0.0.1"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
 
 [[package]]
 name = "valuable"
