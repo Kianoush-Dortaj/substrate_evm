@@ -1801,6 +1801,31 @@ impl pallet_collective::Config<AllianceCollective> for Runtime {
 	type WeightInfo = pallet_collective::weights::SubstrateWeight<Runtime>;
 }
 
+pub type AssetBalance = Balance;
+pub type AssetId = u32;
+
+parameter_types! {
+	pub const DexPalletId: PalletId = PalletId(*b"dex_mock");
+}
+
+impl pallet_dex::Config for Runtime {
+	type PalletId = DexPalletId;
+	type RuntimeEvent = RuntimeEvent;
+	type Currency = Balances;
+	type AssetBalance = AssetBalance;
+	type AssetToCurrencyBalance = sp_runtime::traits::Identity;
+	type CurrencyToAssetBalance = sp_runtime::traits::Identity;
+	type AssetId = AssetId;
+	type Assets = Assets;
+	type AssetRegistry = Assets;
+	type WeightInfo = ();
+	// Provider fee is 0.3%
+	type ProviderFeeNumerator = ConstU128<3>;
+	type ProviderFeeDenominator = ConstU128<1000>;
+	type MinDeposit = ConstU128<1>;
+}
+
+
 parameter_types! {
 	pub const MaxFellows: u32 = AllianceMaxMembers::get();
 	pub const MaxAllies: u32 = 100;
@@ -1911,7 +1936,7 @@ construct_runtime!(
 		MessageQueue: pallet_message_queue,
 		NFT:pallet_nfts,
 		ACN:pallet_acn,
-
+		DEX: pallet_dex,
 		//EVM
 		EVM: pallet_evm,
 		Ethereum: pallet_ethereum,
