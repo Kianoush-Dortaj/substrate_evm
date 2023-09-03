@@ -130,6 +130,7 @@ members = [
 	"frame/scheduler",
 	"frame/scored-pool",
 	"frame/nfts",
+	"frame/chat",
 	"frame/acn",
 	"frame/session",
 	"frame/session/benchmarking",

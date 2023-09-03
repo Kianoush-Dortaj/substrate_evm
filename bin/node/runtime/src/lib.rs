@@ -1704,6 +1704,18 @@ impl pallet_nfts::Config for Runtime {
 	type MetaDataByteDeposit = MetaDataByteDeposit;
 }
 
+impl pallet_chat::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type PalletWeightInfo = pallet_chat::weights::SubstrateWeight<Runtime>;
+	type Quantity = u64;
+	type NFTId = u64;
+	type CollectionId = u64;
+	type Currency = Balances;
+	type CollectionNFTDeposit = NFTCollectionDeposit;
+	type NFTDeposit = NFTDeposit;
+	type MetaDataByteDeposit = MetaDataByteDeposit;
+}
+
 parameter_types! {
 	pub const CollectionDeposit: Balance = 100 * DOLLARS;
 	pub const ItemDeposit: Balance = 1 * DOLLARS;
@@ -1807,24 +1819,6 @@ pub type AssetId = u32;
 parameter_types! {
 	pub const DexPalletId: PalletId = PalletId(*b"dex_mock");
 }
-
-impl pallet_dex::Config for Runtime {
-	type PalletId = DexPalletId;
-	type RuntimeEvent = RuntimeEvent;
-	type Currency = Balances;
-	type AssetBalance = AssetBalance;
-	type AssetToCurrencyBalance = sp_runtime::traits::Identity;
-	type CurrencyToAssetBalance = sp_runtime::traits::Identity;
-	type AssetId = AssetId;
-	type Assets = Assets;
-	type AssetRegistry = Assets;
-	type WeightInfo = ();
-	// Provider fee is 0.3%
-	type ProviderFeeNumerator = ConstU128<3>;
-	type ProviderFeeDenominator = ConstU128<1000>;
-	type MinDeposit = ConstU128<1>;
-}
-
 
 parameter_types! {
 	pub const MaxFellows: u32 = AllianceMaxMembers::get();
@@ -1936,7 +1930,7 @@ construct_runtime!(
 		MessageQueue: pallet_message_queue,
 		NFT:pallet_nfts,
 		ACN:pallet_acn,
-		DEX: pallet_dex,
+		CHAT:pallet_chat,
 		//EVM
 		EVM: pallet_evm,
 		Ethereum: pallet_ethereum,
