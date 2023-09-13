@@ -15,7 +15,6 @@ use frame_support::{
 	transactional, Twox64Concat,
 };
 use frame_system::Config as SystemConfig;
-pub use pallet::*;
 use sp_runtime::traits::UniqueSaturatedFrom;
 
 #[cfg(test)]
@@ -28,7 +27,7 @@ pub mod weights;
 pub use weights::*;
 
 pub mod structs;
-pub use structs::NFTStructs;
+pub use structs::MarketPlaceStructs;
 
 pub mod types;
 pub use types::Types::{AccountOf, BalanceOf, MarketPlace};
@@ -45,51 +44,116 @@ pub mod pallet {
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
-	pub trait Config: frame_system::Config + pallet_timestamp::Config {
+	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 		/// Type representing the weight of this pallet
 		type PalletWeightInfo: WeightInfo;
 		/// The currency mechanism, used for paying for reserves.
 		type Currency: ReservableCurrency<Self::AccountId>;
-		/// Nft quantity
-		type Quantity: Member
-			+ Parameter
-			+ Default
-			+ Copy
-			+ HasCompact
-			+ AtLeast32BitUnsigned
-			+ MaxEncodedLen;
-
-		type NFTId: Member
-			+ Parameter
-			+ Default
-			+ Copy
-			+ HasCompact
-			+ AtLeast32BitUnsigned
-			+ MaxEncodedLen;
-
-		type CollectionId: Member
-			+ Parameter
-			+ Default
-			+ Copy
-			+ HasCompact
-			+ AtLeast32BitUnsigned
-			+ MaxEncodedLen;
-
-		/// The basic amount of funds that must be reserved for an asset class.
-		#[pallet::constant]
-		type CollectionNFTDeposit: Get<BalanceOf<Self>>;
-
-		/// The basic amount of funds that must be reserved for an asset instance.
-		#[pallet::constant]
-		type NFTDeposit: Get<BalanceOf<Self>>;
-
-		/// The basic amount of funds that must be reserved for an asset instance.
-		#[pallet::constant]
-		type MetaDataByteDeposit: Get<BalanceOf<Self>>;
 	}
 
+	pub trait MarketPalceHelper {
+		type MarketHash;
+		type UserAccountId;
+		type Balance;
+
+		fn send_fee_to_market_place_owner(
+			issuer: &Self::UserAccountId,
+			owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+		) -> DispatchResult;
+
+		fn check_allow_royalty(
+			store_owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+			royalty_fee: u64,
+		) -> DispatchResult;
+
+		fn get_market_place_fee(
+			issuer: &Self::UserAccountId,
+			store_id: &Self::MarketHash,
+		) -> Result<(u64, u64), DispatchError>;
+
+		fn send_royalty_fee_to_market_place_owner(
+			issuer: &Self::UserAccountId,
+			owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+			fee: &Self::Balance,
+		) -> DispatchResult;
+	}
+
+	impl<T: Config> MarketPalceHelper for Pallet<T> {
+		type MarketHash = T::Hash;
+		type UserAccountId = T::AccountId;
+		type Balance =
+			<<T as Config>::Currency as Currency<<T as SystemConfig>::AccountId>>::Balance;
+
+		fn send_fee_to_market_place_owner(
+			issuer: &Self::UserAccountId,
+			owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+		) -> DispatchResult {
+			let market_place_info = MarketplaceStorage::<T>::get(owner, store_hash)
+				.ok_or(Error::<T>::MarketNotFound)?;
+
+			let _ = T::Currency::transfer(
+				&issuer,
+				&market_place_info.owner,
+				market_place_info.fee,
+				ExistenceRequirement::AllowDeath,
+			)
+			.map_err(|_| Error::<T>::ErrorTransferMarketPlaceFee)?;
+
+			Ok(())
+		}
+
+		fn send_royalty_fee_to_market_place_owner(
+			issuer: &Self::UserAccountId,
+			owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+			fee: &Self::Balance,
+		) -> DispatchResult {
+			let market_place_info = MarketplaceStorage::<T>::get(owner, store_hash)
+				.ok_or(Error::<T>::MarketNotFound)?;
+
+			let _ = T::Currency::transfer(
+				&issuer,
+				&market_place_info.owner,
+				*fee,
+				ExistenceRequirement::AllowDeath,
+			)
+			.map_err(|_| Error::<T>::ErrorTransferMarketPlaceFee)?;
+
+			Ok(())
+		}
+
+		fn check_allow_royalty(
+			store_owner: &Self::UserAccountId,
+			store_hash: &Self::MarketHash,
+			royalty_fee: u64,
+		) -> DispatchResult {
+			let market_place_info = MarketplaceStorage::<T>::get(store_owner, store_hash)
+				.ok_or(Error::<T>::MarketNotFound)?;
+
+			ensure!(
+				market_place_info.max_royalty >= royalty_fee,
+				Error::<T>::NotAllowSetRoyaltyOverThanStoreConfig
+			);
+
+			Ok(())
+		}
+
+		fn get_market_place_fee(
+			issuer: &Self::UserAccountId,
+			store_id: &Self::MarketHash,
+		) -> Result<(u64, u64), DispatchError> {
+			let market_place_info =
+				MarketplaceStorage::<T>::get(issuer, store_id).ok_or(Error::<T>::MarketNotFound)?;
+
+			Ok((market_place_info.max_royalty, market_place_info.royalty_fee))
+		}
+	}
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/main-docs/build/events-errors/
 	#[pallet::event]
@@ -102,6 +166,8 @@ pub mod pallet {
 			hash_id: HashId<T>,
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
+			max_royalty: u64,
+			royalty_fee: u64,
 		},
 		MarketplaceOwnerChanges {
 			old_owner: AccountOf<T>,
@@ -109,12 +175,23 @@ pub mod pallet {
 			price: BalanceOf<T>,
 			hash_id: HashId<T>,
 		},
+		UpdateMarketPlace {
+			owner: AccountOf<T>,
+			fee: BalanceOf<T>,
+			hash_id: HashId<T>,
+			export_fee: BalanceOf<T>,
+			import_fee: BalanceOf<T>,
+			max_royalty: u64,
+			royalty_fee: u64,
+		},
 	}
 
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
 		MarketNotFound,
+		ErrorTransferMarketPlaceFee,
+		NotAllowSetRoyaltyOverThanStoreConfig,
 	}
 
 	/// Store nft info.
@@ -141,10 +218,20 @@ pub mod pallet {
 			fee: BalanceOf<T>,
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
+			max_royalty: u64,
+			royalty_fee: u64,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
-			Self::do_create_market_place(issuer, metadata, fee, export_fee, import_fee)
+			Self::do_create_market_place(
+				issuer,
+				metadata,
+				fee,
+				export_fee,
+				import_fee,
+				max_royalty,
+				royalty_fee,
+			)
 		}
 
 		#[pallet::call_index(2)]
@@ -159,6 +246,32 @@ pub mod pallet {
 
 			Self::do_change_owner(issuer, new_owner, store_hash_id, price)
 		}
+
+		#[pallet::call_index(3)]
+		#[pallet::weight(T::PalletWeightInfo::do_something())]
+		pub fn change_marketplace_info(
+			origin: OriginFor<T>,
+			store_hash_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			fee: BalanceOf<T>,
+			export_fee: BalanceOf<T>,
+			import_fee: BalanceOf<T>,
+			max_royalty: u64,
+			royalty_fee: u64,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+
+			Self::do_change_marketplace_info(
+				issuer,
+				store_hash_id,
+				metadata,
+				fee,
+				export_fee,
+				import_fee,
+				max_royalty,
+				royalty_fee,
+			)
+		}
 	}
 
 	impl<T: Config> Pallet<T> {
@@ -169,10 +282,12 @@ pub mod pallet {
 			fee: BalanceOf<T>,
 			export_fee: BalanceOf<T>,
 			import_fee: BalanceOf<T>,
+			max_royalty: u64,
+			royalty_fee: u64,
 		) -> DispatchResult {
 			let hash_id = T::Hashing::hash_of(&metadata);
 
-			let market_place = NFTStructs::Marketplace {
+			let market_place = MarketPlaceStructs::Marketplace {
 				fee,
 				issuer: issuer.clone(),
 				owner: issuer.clone(),
@@ -180,6 +295,8 @@ pub mod pallet {
 				hash_id: hash_id.clone(),
 				export_fee: export_fee.clone(),
 				import_fee: import_fee.clone(),
+				max_royalty: max_royalty.clone(),
+				royalty_fee: royalty_fee.clone(),
 			};
 
 			MarketplaceStorage::<T>::insert(issuer.clone(), hash_id.clone(), market_place);
@@ -191,6 +308,8 @@ pub mod pallet {
 				hash_id: hash_id.clone(),
 				export_fee: export_fee.clone(),
 				import_fee: import_fee.clone(),
+				max_royalty: max_royalty.clone(),
+				royalty_fee: royalty_fee.clone(),
 			});
 
 			Ok(())
@@ -209,6 +328,13 @@ pub mod pallet {
 			let mut new_market_info = market_info;
 			new_market_info.owner = new_owner.clone();
 
+			T::Currency::transfer(
+				&new_owner,
+				&original_owner,
+				price,
+				ExistenceRequirement::KeepAlive,
+			)?;
+
 			MarketplaceStorage::<T>::insert(&new_owner, &store_hash_id, new_market_info.clone());
 
 			Self::deposit_event(Event::MarketplaceOwnerChanges {
@@ -216,6 +342,49 @@ pub mod pallet {
 				new_owner: new_owner.clone(),
 				price,
 				hash_id: store_hash_id,
+			});
+
+			Ok(())
+		}
+
+		#[transactional]
+		pub fn do_change_marketplace_info(
+			issuer: T::AccountId,
+			store_hash_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			fee: BalanceOf<T>,
+			export_fee: BalanceOf<T>,
+			import_fee: BalanceOf<T>,
+			max_royalty: u64,
+			royalty_fee: u64,
+		) -> DispatchResult {
+			MarketplaceStorage::<T>::try_mutate(
+				issuer.clone(),
+				store_hash_id.clone(),
+				|market_info| -> Result<(), DispatchError> {
+					match market_info {
+						Some(info) => {
+							info.fee = fee.clone();
+							info.metadata = metadata.clone();
+							info.export_fee = export_fee.clone();
+							info.import_fee = import_fee.clone();
+							info.max_royalty = max_royalty.clone();
+							info.royalty_fee = royalty_fee.clone();
+							Ok(())
+						},
+						None => Err(Error::<T>::MarketNotFound.into()),
+					}
+				},
+			)?;
+
+			Self::deposit_event(Event::UpdateMarketPlace {
+				fee,
+				owner: issuer,
+				hash_id: store_hash_id,
+				export_fee,
+				import_fee,
+				max_royalty,
+				royalty_fee: royalty_fee.clone(),
 			});
 
 			Ok(())

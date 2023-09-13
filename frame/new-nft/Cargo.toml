@@ -1,5 +1,5 @@
 [package]
-name = "pallet-nfts"
+name = "new-nft"
 version = "0.0.1"
 authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
@@ -24,6 +24,8 @@ sp-std = { version = "5.0.0", default-features = false, path = "../../primitives
 sp-arithmetic = { version = "6.0.0", default-features = false, path = "../../primitives/arithmetic" }
 sp-core = { version = "7.0.0", default-features = false, path = "../../primitives/core" }
 pallet-timestamp = { version = "4.0.0-dev", default-features = false, path = "../timestamp" }
+nft-gallery ={ version = "0.0.1", default-features = false, path = "../nft-gallery" }
+utility = {version = "0.0.1", default-features = false, path = "../../utils/utility"}
 
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", path = "../balances" }
@@ -40,5 +42,7 @@ std = [
 	"sp-runtime/std",
 	"sp-std/std",
 	"pallet-timestamp/std",
+	"nft-gallery/std",
+	"utility/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
