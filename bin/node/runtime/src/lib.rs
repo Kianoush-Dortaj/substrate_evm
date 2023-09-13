@@ -1716,6 +1716,12 @@ impl nft_gallery::Config for Runtime {
 	type MetaDataByteDeposit = MetaDataByteDeposit;
 }
 
+impl nft_new::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = nft_new::weights::SubstrateWeight<Runtime>;
+	type Currency = Balances;
+}
+
 parameter_types! {
 	pub const CollectionDeposit: Balance = 100 * DOLLARS;
 	pub const ItemDeposit: Balance = 1 * DOLLARS;
@@ -1924,6 +1930,7 @@ construct_runtime!(
 		NFT:pallet_nfts,
 		ACN:pallet_acn,
 		Gallery:nft_gallery,
+		NewNFT:nft_new,
 
 		//EVM
 		EVM: pallet_evm,
