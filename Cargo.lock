@@ -4748,7 +4748,6 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "frame-try-runtime",
  "log",
- "new-nft",
  "nft-gallery",
  "nft-new",
  "node-primitives",

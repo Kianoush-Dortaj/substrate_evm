@@ -32,7 +32,8 @@ pub use structs::NFTStructs::{Collection, ConfigMarketPlace, Owners, NFT};
 
 pub mod types;
 pub use types::Types::{
-	AccountOf, BalanceOf, CollectionDetailsOf, HashId, NFTDetailsOf, SahreProfitDetailsOf,
+	AccountOf, AlbumDetailsOf, BalanceOf, CollectionDetailsOf, HashId, NFTDetailsOf,
+	SahreProfitDetailsOf,
 };
 
 pub mod utiles;
@@ -42,6 +43,7 @@ pub use utiles::Utility::{calc_royalty_and_fee, do_transfer_nft_share_profit};
 pub mod pallet {
 	use super::*;
 	use frame_system::pallet_prelude::*;
+	use types::Types::Album;
 
 	type HashId<T> = <T as frame_system::Config>::Hash;
 
@@ -76,6 +78,11 @@ pub mod pallet {
 			issuer: AccountOf<T>,
 			nft_id: HashId<T>,
 		},
+		MintedAlbum {
+			collection_id: HashId<T>,
+			issuer: AccountOf<T>,
+			album_id: HashId<T>,
+		},
 		NFTSold {
 			collection_id: HashId<T>,
 			token_id: HashId<T>,
@@ -89,6 +96,11 @@ pub mod pallet {
 			issuer: AccountOf<T>,
 			nft_id: HashId<T>,
 		},
+		UpdatedAlbum {
+			collection_id: HashId<T>,
+			issuer: AccountOf<T>,
+			album_id: HashId<T>,
+		},
 		TransferredNFT {
 			collection_id: HashId<T>,
 			token_id: HashId<T>,
@@ -96,6 +108,14 @@ pub mod pallet {
 			from: AccountOf<T>,
 			to: AccountOf<T>,
 			price: BalanceOf<T>,
+		},
+		NFTLiked {
+			nft_id: HashId<T>,
+			liker: AccountOf<T>,
+		},
+		NFTUnliked {
+			nft_id: HashId<T>,
+			liker: AccountOf<T>,
 		},
 	}
 
@@ -111,6 +131,7 @@ pub mod pallet {
 		OwnersEmpty,
 		ArithmeticUnderflow,
 		YouAreNotOwner,
+		AlbumNotFound,
 		OwnerNotHaveEnoughTotalSupply,
 	}
 
@@ -128,6 +149,21 @@ pub mod pallet {
 		Twox64Concat,
 		AccountOf<T>,
 		CollectionDetailsOf<T>,
+		OptionQuery,
+	>;
+
+	/// Store Album info.
+	#[pallet::storage]
+	#[pallet::unbounded]
+	#[pallet::getter(fn albums)]
+	pub(super) type Albums<T: Config> = StorageNMap<
+		_,
+		(
+			NMapKey<Twox64Concat, HashId<T>>,
+			NMapKey<Twox64Concat, HashId<T>>,
+			NMapKey<Twox64Concat, AccountOf<T>>,
+		),
+		AlbumDetailsOf<T>,
 		OptionQuery,
 	>;
 
@@ -151,6 +187,14 @@ pub mod pallet {
 		OptionQuery,
 	>;
 
+	#[pallet::storage]
+	#[pallet::getter(fn nft_likes)]
+	pub(super) type NFTLikes<T: Config> = StorageMap<_, Twox64Concat, HashId<T>, u64, ValueQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn user_nft_likes)]
+	pub(super) type UserNFTLikes<T: Config> =
+		StorageDoubleMap<_, Twox64Concat, HashId<T>, Twox64Concat, AccountOf<T>, bool, OptionQuery>;
 
 	pub trait NFTHelper {
 		type AccountId;
@@ -230,36 +274,26 @@ pub mod pallet {
 		}
 	}
 
-
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		// Define the `create_collection` call for the pallet
-		// This function allows a user to create a new collection of NFTs
-		// It takes in the metadata of the collection, the address of the market owner, and the
-		// unique identifier for the store
 		#[pallet::call_index(0)]
 		#[pallet::weight(<T as pallet::Config>::WeightInfo::do_something())]
 		pub fn create_collection(
 			origin: OriginFor<T>,
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			market_owner_address: AccountOf<T>,
-			store_hash_id: HashId<T>,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
 
 			Self::do_create_collection(issuer, metadata, market_owner_address)
 		}
-		// Define the `update_collection` call for the pallet
-		// This function allows a user to update an existing collection of NFTs
-		// It takes in the updated metadata of the collection, the address of the market owner, and
-		// the unique identifier for the store
+
 		#[pallet::call_index(1)]
 		#[pallet::weight(<T as pallet::Config>::WeightInfo::do_something())]
 		pub fn update_collection(
 			origin: OriginFor<T>,
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			market_owner_address: AccountOf<T>,
-			store_hash_id: HashId<T>,
 			collection_hash_id: HashId<T>,
 		) -> DispatchResult {
 			let issuer = ensure_signed(origin)?;
@@ -297,6 +331,85 @@ pub mod pallet {
 				end_date,
 			)
 		}
+
+		#[pallet::call_index(3)]
+		#[pallet::weight(<T as pallet::Config>::WeightInfo::do_something())]
+		pub fn update_nft(
+			origin: OriginFor<T>,
+			nft_id: HashId<T>,
+			collection_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			royalty: u64,
+			share_profits: Vec<SahreProfitDetailsOf<T>>,
+			price: BalanceOf<T>,
+			end_date: u64,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+
+			Self::do_update_nft(
+				issuer,
+				collection_id,
+				nft_id,
+				metadata,
+				royalty,
+				share_profits,
+				price,
+				end_date,
+			)
+		}
+
+		#[pallet::call_index(4)]
+		#[pallet::weight(<T as pallet::Config>::WeightInfo::do_something())]
+		pub fn buy_nft(
+			origin: OriginFor<T>,
+			nft_owner_address_id: AccountOf<T>,
+			nft_id: HashId<T>,
+			collection_id: HashId<T>,
+			total_supply: u64,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+
+			Self::do_buy_nft(issuer, nft_owner_address_id, collection_id, nft_id, total_supply)
+		}
+
+		#[pallet::call_index(5)]
+		#[pallet::weight(<T as pallet::Config>::WeightInfo::do_something())]
+		pub fn mint_album(
+			origin: OriginFor<T>,
+			collection_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+			Self::do_mint_album(issuer, collection_id, metadata)
+		}
+
+		#[pallet::call_index(6)]
+		#[pallet::weight(<T as pallet::Config>::WeightInfo::do_something())]
+		pub fn update_album(
+			origin: OriginFor<T>,
+			collection_id: HashId<T>,
+			album_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			nfts: Vec<HashId<T>>,
+		) -> DispatchResult {
+			let issuer = ensure_signed(origin)?;
+			Self::do_update_album(issuer, collection_id, album_id, metadata, nfts)
+		}
+
+		#[pallet::call_index(7)]
+		#[pallet::weight(<T as pallet::Config>::WeightInfo::do_something())]
+		pub fn toggle_like_nft(
+			origin: OriginFor<T>,
+			nft_id: HashId<T>,
+			nft_owner: AccountOf<T>,
+			collection_id: HashId<T>,
+		) -> DispatchResult {
+			let liker = ensure_signed(origin)?;
+
+			Self::get_nft(&nft_owner, &collection_id, &nft_id)?;
+
+			Self::do_toggle_like_nft(liker, nft_id)
+		}
 	}
 
 	impl<T: Config> Pallet<T> {
@@ -317,7 +430,6 @@ pub mod pallet {
 
 			Ok(().into())
 		}
-
 		pub(crate) fn check_owner_hash_enogh_total_suppply(
 			seller: &T::AccountId,
 			owners: &Vec<Owners<T::AccountId>>,
@@ -330,7 +442,6 @@ pub mod pallet {
 
 			user_id
 		}
-
 		/// This function retrieves the details of a specified collection from the storage.
 		///
 		/// # Arguments
@@ -359,7 +470,6 @@ pub mod pallet {
 			<Collections<T>>::get(collection_id.clone(), collection_owner.clone())
 				.ok_or(Error::<T>::CollectionNotFound)
 		}
-
 		pub(crate) fn get_nft(
 			owner: &AccountOf<T>,
 			collection_id: &HashId<T>,
@@ -367,7 +477,6 @@ pub mod pallet {
 		) -> Result<NFTDetailsOf<T>, Error<T>> {
 			<NFTs<T>>::get((nft_id, collection_id, owner)).ok_or(Error::<T>::NFTNotFound)
 		}
-
 		/// This is a private method that carries out the process of creating a new NFT collection.
 		///
 		/// # Arguments
@@ -396,7 +505,6 @@ pub mod pallet {
 		///
 		/// This function is flagged as `transactional`. If it fails, all changes to storage will be
 		/// rolled back.
-
 		#[transactional]
 		fn do_create_collection(
 			issuer: T::AccountId,
@@ -627,11 +735,9 @@ pub mod pallet {
 		/// This function is flagged as `transactional`. If it fails, all changes to storage will be
 		/// rolled back.
 		#[transactional]
-		fn do_update_mint_nft(
+		fn do_update_nft(
 			issuer: AccountOf<T>,
-			store_owner_address: AccountOf<T>,
 			collection_id: HashId<T>,
-			store_id: HashId<T>,
 			nft_id: HashId<T>,
 			metadata: BoundedVec<u8, ConstU32<32>>,
 			royalty: u64,
@@ -677,6 +783,7 @@ pub mod pallet {
 							info.share_profits = share_profits.clone();
 							info.price = price.clone();
 							info.end_date = end_date.clone();
+							info.royalty = royalty.clone();
 
 							Ok(())
 						},
@@ -902,7 +1009,6 @@ pub mod pallet {
 				},
 			)
 		}
-
 		/// The `find_index_owner` function is a method for finding the index of a specific owner
 		/// within a vector of owners.
 		///
@@ -945,6 +1051,146 @@ pub mod pallet {
 				.ok_or(Error::<T>::OwnerNotFound);
 
 			user_id
+		}
+
+		#[transactional]
+		fn do_mint_album(
+			issuer: AccountOf<T>,
+			collection_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+		) -> DispatchResult {
+			// Store Transaction Fee
+			// T::NFTGallery::send_fee_to_market_place_owner(
+			// 	&issuer,
+			// 	&store_owner_address,
+			// 	&store_id,
+			// )?;
+			// Check that the collection exists
+			let collection = Self::get_collection(&issuer, &collection_id)?;
+
+			ensure!(collection.issuer == issuer, Error::<T>::YouAreNotOwnerOfCollection);
+
+			// T::NFTGallery::check_allow_royalty(&store_owner_address, &store_id,
+			// royalty.clone())?;
+
+			// Create the Album instance
+			let nft_details = Album { metadata: metadata.clone(), nfts: vec![] };
+
+			let album_hash_id = T::Hashing::hash_of(&metadata);
+			// Insert the NFT instance to the NFTs storage
+			Albums::<T>::insert(
+				(album_hash_id.clone(), collection_id.clone(), issuer.clone()),
+				nft_details,
+			);
+
+			// Emit the MintedNFT event
+			Self::deposit_event(Event::MintedAlbum {
+				collection_id,
+				issuer: issuer.clone(),
+				album_id: album_hash_id.clone(),
+			});
+			Ok(().into())
+		}
+
+		#[transactional]
+		fn do_update_album(
+			issuer: AccountOf<T>,
+			collection_id: HashId<T>,
+			album_id: HashId<T>,
+			metadata: BoundedVec<u8, ConstU32<32>>,
+			nfts: Vec<HashId<T>>,
+		) -> DispatchResult {
+			// Store Transaction Fee
+			// T::NFTGallery::send_fee_to_market_place_owner(
+			// 	&issuer,
+			// 	&store_owner_address,
+			// 	&store_id,
+			// )?;
+			// Check that the collection exists
+			let collection = Self::get_collection(&issuer, &collection_id)?;
+
+			ensure!(collection.issuer == issuer, Error::<T>::YouAreNotOwnerOfCollection);
+			Self::ensure_nfts_without_owners(nfts.clone(), &collection_id, &issuer)?;
+
+			// T::NFTGallery::check_allow_royalty(&store_owner_address, &store_id,
+			// royalty.clone())?;
+
+			let album_hash_id = T::Hashing::hash_of(&metadata);
+
+			Albums::<T>::try_mutate(
+				(album_id.clone(), collection_id.clone(), issuer.clone()),
+				|album_details| -> Result<(), DispatchError> {
+					match album_details {
+						Some(info) => {
+							info.metadata = metadata.clone();
+							info.nfts = nfts.clone();
+
+							Ok(())
+						},
+						None => Err(Error::<T>::AlbumNotFound.into()),
+					}
+				},
+			)?;
+			// Emit the MintedNFT event
+			Self::deposit_event(Event::UpdatedAlbum {
+				collection_id,
+				issuer: issuer.clone(),
+				album_id: album_hash_id.clone(),
+			});
+			Ok(().into())
+		}
+
+		#[transactional]
+		fn ensure_nfts_without_owners(
+			nfts: Vec<HashId<T>>,
+			collection_id: &HashId<T>,
+			issuer: &AccountOf<T>,
+		) -> DispatchResult {
+			for nft_id in &nfts {
+				// Retrieve NFT details from storage
+				let nft_details =
+					NFTs::<T>::get((nft_id.clone(), collection_id.clone(), issuer.clone()));
+
+				// Ensure NFT exists
+				let info = match nft_details {
+					Some(info) => info,
+					None => return Err(Error::<T>::NFTNotFound.into()),
+				};
+
+				// Check for owners
+				if let Some(owners) = &info.owners {
+					if owners.len() > 0 {
+						return Err(Error::<T>::NFTHasOwner.into())
+					}
+				}
+			}
+			Ok(().into())
+		}
+
+		#[transactional]
+		pub fn do_toggle_like_nft(liker: AccountOf<T>, nft_id: HashId<T>) -> DispatchResult {
+			let currently_liked =
+				UserNFTLikes::<T>::get(nft_id.clone(), liker.clone()).unwrap_or(false);
+
+			if currently_liked {
+				// If currently liked, then unlike it
+				NFTLikes::<T>::mutate(nft_id.clone(), |likes| {
+					if *likes > 0 {
+						*likes -= 1;
+					}
+				});
+				UserNFTLikes::<T>::insert(nft_id.clone(), liker.clone(), false);
+				Self::deposit_event(Event::NFTUnliked { nft_id, liker });
+			} else {
+				// If not liked yet, then like it
+				NFTLikes::<T>::mutate(nft_id.clone(), |likes| {
+					*likes += 1;
+				});
+				UserNFTLikes::<T>::insert(nft_id.clone(), liker.clone(), true);
+				Self::deposit_event(Event::NFTLiked { nft_id, liker });
+			}
+
+			Ok(())
 		}
 	}
 }

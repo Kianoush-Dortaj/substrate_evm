@@ -1692,31 +1692,31 @@ parameter_types! {
 	pub const MetaDataByteDeposit: Balance = 10 * MILLICENTS;
 }
 
-impl pallet_nfts::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-	type PalletWeightInfo = pallet_nfts::weights::SubstrateWeight<Runtime>;
-	type Quantity = u64;
-	type NFTId = u64;
-	type CollectionId = u64;
-	type Currency = Balances;
-	type CollectionNFTDeposit = NFTCollectionDeposit;
-	type NFTDeposit = NFTDeposit;
-	type MetaDataByteDeposit = MetaDataByteDeposit;
-	type NFTGallery = nft_gallery::Pallet<Runtime>;
-}
+// impl pallet_nfts::Config for Runtime {
+// 	type RuntimeEvent = RuntimeEvent;
+// 	type PalletWeightInfo = pallet_nfts::weights::SubstrateWeight<Runtime>;
+// 	type Quantity = u64;
+// 	type NFTId = u64;
+// 	type CollectionId = u64;
+// 	type Currency = Balances;
+// 	type CollectionNFTDeposit = NFTCollectionDeposit;
+// 	type NFTDeposit = NFTDeposit;
+// 	type MetaDataByteDeposit = MetaDataByteDeposit;
+// 	type NFTGallery = nft_gallery::Pallet<Runtime>;
+// }
 
-impl new_nft::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-	type NFTPalletWeightInfo = new_nft::weights::SubstrateWeight<Runtime>;
-	type NFTCurrency = Balances;
-	type NFTGallery = nft_gallery::Pallet<Runtime>;
-}
+// impl new_nft::Config for Runtime {
+// 	type RuntimeEvent = RuntimeEvent;
+// 	type NFTPalletWeightInfo = new_nft::weights::SubstrateWeight<Runtime>;
+// 	type NFTCurrency = Balances;
+// 	type NFTGallery = nft_gallery::Pallet<Runtime>;
+// }
 
-impl nft_gallery::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-	type PalletWeightInfo = nft_gallery::weights::SubstrateWeight<Runtime>;
-	type Currency = Balances;
-}
+// impl nft_gallery::Config for Runtime {
+// 	type RuntimeEvent = RuntimeEvent;
+// 	type PalletWeightInfo = nft_gallery::weights::SubstrateWeight<Runtime>;
+// 	type Currency = Balances;
+// }
 
 impl nft_new::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
@@ -1929,11 +1929,10 @@ construct_runtime!(
 		RankedCollective: pallet_ranked_collective,
 		FastUnstake: pallet_fast_unstake,
 		MessageQueue: pallet_message_queue,
-		NFT:pallet_nfts,
+		// NFT:pallet_nfts,
 		// ACN:pallet_acn,
-		Gallery:nft_gallery,
+		// Gallery:nft_gallery,
 		NewNFT:nft_new,
-
 		//EVM
 		EVM: pallet_evm,
 		Ethereum: pallet_ethereum,

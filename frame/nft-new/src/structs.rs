@@ -54,6 +54,14 @@ pub mod NFTStructs {
 		pub end_date: u64,
 	}
 
+	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+	#[scale_info(skip_type_params(Hash))]
+	pub struct Album<Hash> {
+		/// Token metadata
+		pub metadata: BoundedVec<u8, ConstU32<32>>,
+		pub nfts: Vec<Hash>,
+	}
+
 	/// Class info
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 	#[scale_info(skip_type_params(AccountId, CollectionId))]

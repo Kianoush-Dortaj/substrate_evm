@@ -2,7 +2,7 @@ pub mod Types {
 
 	pub use crate::{
 		pallet::Config,
-		structs::NFTStructs::{Collection, ShareProfitsInfo, NFT,ConfigMarketPlace},
+		structs::NFTStructs::{Collection, ShareProfitsInfo,Album, NFT,ConfigMarketPlace},
 	};
 	use frame_support::traits::Currency;
 	use frame_system::Config as SystemConfig;
@@ -19,6 +19,8 @@ pub mod Types {
 	pub type SahreProfitDetailsOf<T> = ShareProfitsInfo<<T as SystemConfig>::AccountId>;
 
 	pub type NFTDetailsOf<T> = NFT<<T as SystemConfig>::AccountId, BalanceOf<T>>;
+
+	pub type AlbumDetailsOf<T> = Album<HashId<T>>;
 
 	pub type AccountOf<T> = <T as SystemConfig>::AccountId;
 }
